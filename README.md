@@ -20,7 +20,12 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Optional live mode** — set a backend API URL in the UI to fetch real command results
 - **Command search + visible-runner** — search command cards and run all currently visible commands in sequence
 - **Input validation + recent history** — validate Instagram usernames and quickly rerun recent command/target pairs
+- **Persistent recent command history** — recent command chips survive page reloads
+- **One-click history cleanup** — clear recent targets and recent commands independently
 - **Terminal utilities** — clear terminal output and export terminal logs to `.txt`
+- **Overlap-safe command execution** — prevents concurrent command runs from colliding
+- **Stoppable batch runner** — `RUN VISIBLE` toggles to `STOP` while batch execution is active
+- **Keyboard shortcuts** — `Ctrl/Cmd+Enter` run visible, `Ctrl/Cmd+K` focus search, `Esc` clear validation
 - **Favorites + favorites tab** — star frequently used commands and filter to favorites only
 - **Sortable command grid** — order commands by default, name, category, or most-used
 - **API health indicator** — check backend reachability from the UI with visible status

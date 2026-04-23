@@ -457,6 +457,16 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    .btn-mini.stop-mode {
+      border-color: rgba(255,95,87,0.6);
+      color: #ffb3ad;
+      box-shadow: 3px 3px 0 rgba(255,95,87,0.18);
+    }
+    .btn-mini.stop-mode:hover {
+      border-color: #ff5f57;
+      color: #ffd0cc;
+      background: rgba(255,95,87,0.08);
+    }
     .tab-btn {
       padding: 8px 16px;
       border: 2px solid rgba(0,245,212,0.25);
@@ -516,6 +526,11 @@
     .command-card.active-card {
       border-color: var(--glow);
       box-shadow: 7px 7px 0 rgba(0,245,212,0.3), 0 0 24px rgba(0,245,212,0.15);
+    }
+    .command-card.command-card-disabled {
+      opacity: 0.55;
+      pointer-events: none;
+      filter: grayscale(0.35);
     }
     .command-card.favorite-card {
       border-color: rgba(255,215,0,0.65);
@@ -669,6 +684,13 @@
       font-size: 0.6rem;
       color: var(--teal);
       letter-spacing: 1px;
+    }
+    .recent-title-row,
+    .recent-targets-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
       margin-bottom: 8px;
     }
     .recent-list {
@@ -700,8 +722,21 @@
       font-family: var(--pixel-font);
       font-size: 0.58rem;
       color: var(--teal);
-      margin-bottom: 8px;
       letter-spacing: 1px;
+    }
+    .btn-clear-mini {
+      padding: 5px 9px;
+      border: 1px solid rgba(0,245,212,0.35);
+      background: transparent;
+      color: var(--foam);
+      font-family: var(--pixel-font);
+      font-size: 0.45rem;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+    .btn-clear-mini:hover {
+      border-color: var(--glow);
+      color: var(--glow);
     }
     .recent-targets-list {
       display: flex;
@@ -878,7 +913,10 @@
         <div class="stat-pill"><span class="dot dot-pink"></span>Public profiles only</div>
       </div>
       <div class="recent-targets-wrap">
-        <div class="recent-targets-title">RECENT TARGETS</div>
+        <div class="recent-targets-title-row">
+          <div class="recent-targets-title">RECENT TARGETS</div>
+          <button class="btn-clear-mini" onclick="clearRecentTargets()" type="button">CLEAR</button>
+        </div>
         <div id="recent-targets-list" class="recent-targets-list">
           <div class="t-dim">No recent targets yet.</div>
         </div>
@@ -930,9 +968,9 @@
         <span class="tb-dot tb-green"></span>
         <span class="tb-title">oceangram@osint — bioluminescent shell</span>
         <div class="terminal-tools">
-          <button class="btn-top" onclick="retryLastCommand()">RETRY</button>
-          <button class="btn-top" onclick="clearTerminal()">CLEAR</button>
-          <button class="btn-top" onclick="exportTerminal()">EXPORT</button>
+          <button class="btn-top" id="retry-btn" onclick="retryLastCommand()">RETRY</button>
+          <button class="btn-top" id="clear-btn" onclick="clearTerminal()">CLEAR</button>
+          <button class="btn-top" id="export-btn" onclick="exportTerminal()">EXPORT</button>
         </div>
       </div>
       <div class="terminal-body" id="terminal-body">
@@ -943,7 +981,10 @@
       </div>
     </div>
     <div class="recent-wrap">
-      <div class="recent-title">RECENT COMMANDS</div>
+      <div class="recent-title-row">
+        <div class="recent-title">RECENT COMMANDS</div>
+        <button class="btn-clear-mini" onclick="clearRecentCommands()" type="button">CLEAR</button>
+      </div>
       <div id="recent-commands" class="recent-list">
         <div class="t-dim">No command history yet.</div>
       </div>
@@ -1099,9 +1140,12 @@ const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
 const FAVORITES_STORAGE_KEY = 'oceangramFavoriteCommands';
 const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
 const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
+const RECENT_COMMANDS_STORAGE_KEY = 'oceangramRecentCommands';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
+const RUN_ALL_LABEL_DEFAULT = '▶ RUN VISIBLE';
+const RUN_ALL_LABEL_STOP = '■ STOP';
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
@@ -1119,6 +1163,9 @@ let recentTargets = [];
 let favoriteCommandIds = new Set();
 let commandRunCounts = {};
 let lastRunContext = null;
+let commandInFlight = false;
+let runAllInProgress = false;
+let cancelRunAll = false;
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1210,6 +1257,12 @@ function initStoredState() {
   commandRunCounts = counts && typeof counts === 'object' ? counts : {};
   const targets = readStoredJson(RECENT_TARGETS_STORAGE_KEY, []);
   recentTargets = Array.isArray(targets) ? targets.slice(0, MAX_RECENT_TARGETS) : [];
+  const commands = readStoredJson(RECENT_COMMANDS_STORAGE_KEY, []);
+  recentCommands = Array.isArray(commands)
+    ? commands
+      .filter(item => item && typeof item.commandId === 'string' && typeof item.target === 'string')
+      .slice(0, MAX_RECENT_COMMANDS)
+    : [];
 }
 
 function persistFavorites() {
@@ -1222,6 +1275,10 @@ function persistRunCounts() {
 
 function persistRecentTargets() {
   persistJson(RECENT_TARGETS_STORAGE_KEY, recentTargets);
+}
+
+function persistRecentCommands() {
+  persistJson(RECENT_COMMANDS_STORAGE_KEY, recentCommands);
 }
 
 function parseLiveOutputLines(data) {
@@ -1369,6 +1426,7 @@ function addRecentCommand(commandId, target) {
   recentCommands = [{ commandId, target }, ...recentCommands
     .filter(x => !(x.commandId === commandId && x.target === target))]
     .slice(0, MAX_RECENT_COMMANDS);
+  persistRecentCommands();
   renderRecentCommands();
 }
 
@@ -1404,6 +1462,20 @@ function addRecentTarget(target) {
   recentTargets = [target, ...recentTargets.filter(t => t !== target)].slice(0, MAX_RECENT_TARGETS);
   persistRecentTargets();
   renderRecentTargets();
+}
+
+function clearRecentTargets() {
+  recentTargets = [];
+  persistRecentTargets();
+  renderRecentTargets();
+  setTargetValidation('Recent targets cleared.');
+}
+
+function clearRecentCommands() {
+  recentCommands = [];
+  persistRecentCommands();
+  renderRecentCommands();
+  setTargetValidation('Recent commands cleared.');
 }
 
 function renderRecentTargets() {
@@ -1520,19 +1592,53 @@ async function retryLastCommand() {
   await runCommand(cmd, lastRunContext.target);
 }
 
+function setRunAllButtonState(running) {
+  const btn = document.getElementById('run-all-btn');
+  if (!btn) return;
+  btn.textContent = running ? RUN_ALL_LABEL_STOP : RUN_ALL_LABEL_DEFAULT;
+  btn.classList.toggle('stop-mode', running);
+  btn.disabled = false;
+}
+
+function setCommandBusyState(isBusy) {
+  commandInFlight = isBusy;
+  document.querySelectorAll('.command-card').forEach(card => {
+    card.classList.toggle('command-card-disabled', isBusy);
+    card.setAttribute('aria-disabled', isBusy ? 'true' : 'false');
+    card.setAttribute('tabindex', isBusy ? '-1' : '0');
+  });
+  const diveBtn = document.getElementById('dive-btn');
+  if (diveBtn) diveBtn.disabled = isBusy;
+  const retryBtn = document.getElementById('retry-btn');
+  if (retryBtn) retryBtn.disabled = isBusy;
+  const apiHealthBtn = document.getElementById('api-health-btn');
+  if (apiHealthBtn) apiHealthBtn.disabled = isBusy;
+  const runAllBtn = document.getElementById('run-all-btn');
+  if (runAllBtn && !runAllInProgress) runAllBtn.disabled = isBusy;
+}
+
 async function runCommand(c, providedTarget = null) {
+  if (commandInFlight) {
+    setTargetValidation('A command is already running. Please wait for it to finish.');
+    return;
+  }
   const target = providedTarget ?? getValidatedTarget();
   if (!target) return;
-  document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
-  const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
-  if (el) el.classList.add('active-card');
-  const lines = await fetchLiveLines(target, c.name);
-  registerCommandRun(c, target);
-  addRecentTarget(target);
-  addRecentCommand(c.id, target);
-  await animateOutput(lines);
-  renderCards();
-  document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
+  setCommandBusyState(true);
+  try {
+    document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
+    const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
+    if (el) el.classList.add('active-card');
+    const lines = await fetchLiveLines(target, c.name);
+    registerCommandRun(c, target);
+    addRecentTarget(target);
+    addRecentCommand(c.id, target);
+    await animateOutput(lines);
+    renderCards();
+    document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
+  } finally {
+    setCommandBusyState(false);
+  }
 }
 
 function startScan() {
@@ -1557,6 +1663,11 @@ function startScan() {
 }
 
 async function runAllVisibleCommands() {
+  if (runAllInProgress) {
+    cancelRunAll = true;
+    setTargetValidation('Stopping batch run after current command...');
+    return;
+  }
   const target = getValidatedTarget();
   if (!target) return;
   const visible = getVisibleCommands();
@@ -1564,18 +1675,23 @@ async function runAllVisibleCommands() {
     setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
     return;
   }
-  const btn = document.getElementById('run-all-btn');
-  if (btn) btn.disabled = true;
+  runAllInProgress = true;
+  cancelRunAll = false;
+  setRunAllButtonState(true);
   try {
     for (let i = 0; i < visible.length; i++) {
+      if (cancelRunAll) break;
       const c = visible[i];
       setTargetValidation(`Running ${i + 1}/${visible.length}: ${c.name}`);
       // Sequential to preserve terminal readability.
       await runCommand(c, target);
     }
-    setTargetValidation(`Completed ${visible.length} commands for @${target}.`);
+    if (cancelRunAll) setTargetValidation(`Batch run stopped for @${target}.`);
+    else setTargetValidation(`Completed ${visible.length} commands for @${target}.`);
   } finally {
-    if (btn) btn.disabled = false;
+    runAllInProgress = false;
+    cancelRunAll = false;
+    setRunAllButtonState(false);
   }
 }
 
@@ -1957,6 +2073,12 @@ document.head.appendChild(KF);
 const apiInput = document.getElementById('api-url-input');
 if (apiInput) {
   apiInput.value = readStoredApiBaseUrl();
+  apiInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      checkApiHealth();
+    }
+  });
   apiInput.addEventListener('change', () => {
     const normalized = getApiBaseUrl();
     apiInput.value = normalized;
@@ -1985,6 +2107,26 @@ if (targetInput) {
     if (!targetInput.value.trim()) setTargetValidation('');
   });
 }
+document.addEventListener('keydown', (e) => {
+  const key = (e.key || '').toLowerCase();
+  const withMeta = e.ctrlKey || e.metaKey;
+  if (withMeta && key === 'enter') {
+    e.preventDefault();
+    runAllVisibleCommands();
+    return;
+  }
+  if (withMeta && key === 'k') {
+    const search = document.getElementById('command-search-input');
+    if (!search) return;
+    e.preventDefault();
+    search.focus();
+    search.select();
+    return;
+  }
+  if (key === 'escape') {
+    setTargetValidation('');
+  }
+});
 initStoredState();
 setLiveModePill();
 setApiHealthPill('warn', getApiBaseUrl() ? 'API status unknown' : 'Set backend URL first');
