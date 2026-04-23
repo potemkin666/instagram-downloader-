@@ -9,7 +9,7 @@ GitHub Pages is enabled for this repository.
 Use **Settings → Pages** with **Branch: `main`** and **Folder: `/ (root)`**, then visit:
 
 ```
-https://potemkin666.github.io/instagram-downloader-/
+https://<your-username>.github.io/instagram-downloader-/
 ```
 
 ## ✨ Features
