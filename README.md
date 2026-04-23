@@ -29,6 +29,12 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Persistent command view state** — remembers active category, command search query, and sort mode across reloads
 - **Safer backend URL handling** — validates backend URL format/protocol and automatically re-checks API health after edits
 - **Quick-run first match** — run the first currently visible command instantly via `RUN FIRST` or `Enter` in command search
+- **Media URL actions (incl. profile pics)** — auto-detects latest media URL from live output with one-click `OPEN`, `SAVE`, and `COPY MEDIA URL`
+- **Live response cache** — reuses cached command output per target+command for faster repeat lookups
+- **Cache management controls** — view cache entry count in the UI and clear cached live output instantly
+- **Auto retry for flaky requests** — optional one-time retry on failed live backend calls
+- **Batch delay control** — configure milliseconds between commands during `RUN VISIBLE` batches
+- **Contact command safety lock** — blocks `Contact` commands unless explicitly enabled by the operator
 - **Favorites + favorites tab** — star frequently used commands and filter to favorites only
 - **Sortable command grid** — order commands by default, name, category, or most-used
 - **API health indicator** — check backend reachability from the UI with visible status

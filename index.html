@@ -944,6 +944,14 @@
       <button class="btn-mini" id="run-all-btn" onclick="runAllVisibleCommands()">RUN VISIBLE</button>
       <div class="stat-pill" id="visible-count-pill"><span class="dot dot-green"></span>0 visible</div>
     </div>
+    <div class="commands-toolbar mt-16">
+      <label class="stat-pill"><input id="use-cache-toggle" type="checkbox" checked/> Use cache</label>
+      <label class="stat-pill"><input id="auto-retry-toggle" type="checkbox" checked/> Auto retry once</label>
+      <label class="stat-pill"><input id="allow-contact-toggle" type="checkbox"/> Allow contact commands</label>
+      <label class="stat-pill">Batch delay (ms) <input id="batch-delay-input" class="search-input command-sort" type="number" min="0" max="5000" step="100" value="400" aria-label="Batch delay in milliseconds"/></label>
+      <button class="btn-mini" id="clear-cache-btn" type="button" onclick="clearLiveCache()">CLEAR CACHE</button>
+      <div class="stat-pill" id="cache-count-pill"><span class="dot dot-green"></span>0 cached</div>
+    </div>
     <div class="category-tabs" id="cat-tabs" role="tablist">
       <button class="tab-btn active" data-cat="all"        onclick="filterCards(this)" role="tab">ALL</button>
       <button class="tab-btn" data-cat="Profile"     onclick="filterCards(this)" role="tab">PROFILE</button>
@@ -970,6 +978,9 @@
         <span class="tb-title">oceangram@osint — bioluminescent shell</span>
         <div class="terminal-tools">
           <button class="btn-top" id="retry-btn" onclick="retryLastCommand()">RETRY</button>
+          <button class="btn-top" id="open-media-btn" onclick="openLastMedia()" disabled>OPEN MEDIA</button>
+          <button class="btn-top" id="save-media-btn" onclick="saveLastMedia()" disabled>SAVE MEDIA</button>
+          <button class="btn-top" id="copy-media-btn" onclick="copyLastMediaUrl()" disabled>COPY MEDIA URL</button>
           <button class="btn-top" id="clear-btn" onclick="clearTerminal()">CLEAR</button>
           <button class="btn-top" id="export-btn" onclick="exportTerminal()">EXPORT</button>
         </div>
@@ -1143,14 +1154,20 @@ const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
 const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
 const RECENT_COMMANDS_STORAGE_KEY = 'oceangramRecentCommands';
 const COMMAND_UI_STATE_STORAGE_KEY = 'oceangramCommandUiState';
+const LIVE_CACHE_STORAGE_KEY = 'oceangramLiveOutputCache';
+const FUNCTIONAL_SETTINGS_STORAGE_KEY = 'oceangramFunctionalSettings';
+const LAST_MEDIA_URL_STORAGE_KEY = 'oceangramLastMediaUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
 const API_HEALTH_DEBOUNCE_MS = 700;
+const LIVE_FETCH_ATTEMPTS_MAX = 2;
 const RUN_ALL_LABEL_DEFAULT = 'RUN VISIBLE';
 const RUN_ALL_LABEL_STOP = 'STOP';
 const COMMAND_CATEGORIES = new Set(['all', 'Profile', 'Social', 'Content', 'Engagement', 'Contact', 'favorites']);
 const DEFAULT_COMMAND_UI_STATE = { category: 'all', search: '', sort: 'default' };
+const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
+const MAX_LIVE_CACHE_ITEMS = 120;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
@@ -1172,6 +1189,12 @@ let commandInFlight = false;
 let runAllInProgress = false;
 let cancelRunAll = false;
 let apiHealthDebounceId = null;
+let liveResponseCache = {};
+let useCacheEnabled = DEFAULT_FUNCTIONAL_SETTINGS.useCache;
+let autoRetryEnabled = DEFAULT_FUNCTIONAL_SETTINGS.autoRetry;
+let allowContactCommands = DEFAULT_FUNCTIONAL_SETTINGS.allowContact;
+let batchDelayMs = DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
+let lastMediaUrl = '';
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1318,6 +1341,163 @@ function setActiveCategory(category) {
   });
 }
 
+function isContactCommand(command) {
+  return !!(command && command.cat === 'Contact');
+}
+
+function readStoredFunctionalSettings() {
+  const saved = readStoredJson(FUNCTIONAL_SETTINGS_STORAGE_KEY, {});
+  if (!saved || typeof saved !== 'object') return { ...DEFAULT_FUNCTIONAL_SETTINGS };
+  return {
+    useCache: saved.useCache !== false,
+    autoRetry: saved.autoRetry !== false,
+    allowContact: saved.allowContact === true,
+    batchDelayMs: Number.isFinite(Number(saved.batchDelayMs))
+      ? Math.max(0, Math.min(5000, Number(saved.batchDelayMs)))
+      : DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs,
+  };
+}
+
+function persistFunctionalSettings() {
+  persistJson(FUNCTIONAL_SETTINGS_STORAGE_KEY, {
+    useCache: useCacheEnabled,
+    autoRetry: autoRetryEnabled,
+    allowContact: allowContactCommands,
+    batchDelayMs,
+  });
+}
+
+function getLiveCacheKey(target, command) {
+  return `${String(target || '').toLowerCase()}::${String(command || '').toLowerCase()}`;
+}
+
+function readStoredLiveCache() {
+  const parsed = readStoredJson(LIVE_CACHE_STORAGE_KEY, {});
+  return parsed && typeof parsed === 'object' ? parsed : {};
+}
+
+function updateCacheCountPill() {
+  const pill = document.getElementById('cache-count-pill');
+  if (!pill) return;
+  const count = Object.keys(liveResponseCache || {}).length;
+  pill.innerHTML = `<span class="dot dot-green"></span>${count} cached`;
+}
+
+function persistLiveCache() {
+  const entries = Object.entries(liveResponseCache || {});
+  if (entries.length > MAX_LIVE_CACHE_ITEMS) {
+    entries.sort((a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0));
+    const trim = entries.length - MAX_LIVE_CACHE_ITEMS;
+    for (let i = 0; i < trim; i++) {
+      delete liveResponseCache[entries[i][0]];
+    }
+  }
+  persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
+  updateCacheCountPill();
+}
+
+function getCachedLiveLines(target, command) {
+  const key = getLiveCacheKey(target, command);
+  const hit = liveResponseCache[key];
+  if (!hit || !Array.isArray(hit.lines)) return null;
+  hit.ts = Date.now();
+  persistLiveCache();
+  return hit.lines.map(([type, text]) => [String(type), String(text)]);
+}
+
+function setCachedLiveLines(target, command, lines) {
+  const key = getLiveCacheKey(target, command);
+  liveResponseCache[key] = {
+    ts: Date.now(),
+    lines: Array.isArray(lines) ? lines.slice(-250).map(([type, text]) => [String(type), String(text)]) : [],
+  };
+  persistLiveCache();
+}
+
+function clearLiveCache() {
+  liveResponseCache = {};
+  persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
+  updateCacheCountPill();
+  setTargetValidation('Cleared cached live command output.');
+}
+
+function readStoredLastMediaUrl() {
+  try { return localStorage.getItem(LAST_MEDIA_URL_STORAGE_KEY) || ''; }
+  catch (_) { return ''; }
+}
+
+function persistLastMediaUrl(url) {
+  try {
+    if (url) localStorage.setItem(LAST_MEDIA_URL_STORAGE_KEY, url);
+    else localStorage.removeItem(LAST_MEDIA_URL_STORAGE_KEY);
+  } catch (_) {}
+}
+
+function updateMediaButtons() {
+  const disabled = !lastMediaUrl;
+  ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = disabled;
+  });
+}
+
+function setLastMediaUrl(url) {
+  lastMediaUrl = String(url || '').trim();
+  persistLastMediaUrl(lastMediaUrl);
+  updateMediaButtons();
+}
+
+function extractUrlsFromText(text) {
+  if (typeof text !== 'string' || !text) return [];
+  const matches = text.match(/https?:\/\/[^\s"'<>]+/gi);
+  return matches ? matches.map(u => u.replace(/[),.;]+$/, '')) : [];
+}
+
+function looksLikeMediaUrl(url) {
+  const u = String(url || '').toLowerCase();
+  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/.test(u)
+    || u.includes('instagram')
+    || u.includes('cdninstagram')
+    || u.includes('profile');
+}
+
+function extractMediaUrlFromLines(lines, commandName = '') {
+  if (!Array.isArray(lines)) return '';
+  const candidates = [];
+  lines.forEach(([, text]) => {
+    extractUrlsFromText(String(text || '')).forEach(url => candidates.push(url));
+  });
+  if (!candidates.length) return '';
+  if (commandName === 'propic') return candidates[0];
+  return candidates.find(looksLikeMediaUrl) || candidates[0];
+}
+
+function openLastMedia() {
+  if (!lastMediaUrl) return;
+  window.open(lastMediaUrl, '_blank', 'noopener');
+}
+
+function saveLastMedia() {
+  if (!lastMediaUrl) return;
+  const a = document.createElement('a');
+  a.href = lastMediaUrl;
+  a.download = `oceangram-media-${formatTimestampForFilename()}`;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function copyLastMediaUrl() {
+  if (!lastMediaUrl) return;
+  try {
+    await navigator.clipboard.writeText(lastMediaUrl);
+    setTargetValidation('Copied latest media URL to clipboard.');
+  } catch (_) {
+    setTargetValidation('Unable to copy media URL.');
+  }
+}
+
 function validateApiBaseUrl(base) {
   if (!base) return 'Set backend URL first';
   try {
@@ -1416,40 +1596,61 @@ async function fetchLiveLines(target, cmd) {
       ['info', '  Update Backend API URL, then run the command again.'],
     ];
   }
-  const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { method: 'GET', signal: controller.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    const payload = parseLiveOutputLines(data);
-    const hasMeaningfulPayload = payload.length > 0 && payload.some(([, text]) => String(text || '').trim().length > 0);
-    if (!hasMeaningfulPayload) {
+  if (useCacheEnabled) {
+    const cached = getCachedLiveLines(target, cmd);
+    if (cached && cached.length) {
       return [
         ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
         ['dim', '════════════════════════════════════════════════'],
-        ['warn', '[!] Live backend returned no output'],
+        ['label', `[ ${cmd} — cache ]`],
+        ...cached,
+        ['success', '[✔] Command completed (cached)'],
       ];
     }
-    return [
-      ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
-      ['dim', '════════════════════════════════════════════════'],
-      ['label', `[ ${cmd} — live ]`],
-      ...payload,
-      ['success', '[✔] Command completed'],
-    ];
-  } catch (err) {
-    const msg = err?.name === 'AbortError' ? 'request timed out' : 'connection error';
-    return [
-      ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
-      ['dim', '════════════════════════════════════════════════'],
-      ['warn', `[!] Live request failed: ${msg}`],
-      ['info', '  No fallback output is enabled.'],
-    ];
-  } finally {
-    clearTimeout(timeoutId);
   }
+  const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
+  const maxAttempts = autoRetryEnabled ? LIVE_FETCH_ATTEMPTS_MAX : 1;
+  let attempt = 0;
+  let lastError = null;
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const data = await res.json();
+      const payload = parseLiveOutputLines(data);
+      const hasMeaningfulPayload = payload.length > 0 && payload.some(([, text]) => String(text || '').trim().length > 0);
+      if (!hasMeaningfulPayload) {
+        return [
+          ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+          ['dim', '════════════════════════════════════════════════'],
+          ['warn', '[!] Live backend returned no output'],
+        ];
+      }
+      if (useCacheEnabled) setCachedLiveLines(target, cmd, payload);
+      return [
+        ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+        ['dim', '════════════════════════════════════════════════'],
+        ['label', `[ ${cmd} — live${attempt > 1 ? ` retry #${attempt - 1}` : ''} ]`],
+        ...payload,
+        ['success', '[✔] Command completed'],
+      ];
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts) continue;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  const msg = lastError?.name === 'AbortError' ? 'request timed out' : 'connection error';
+  return [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+    ['dim', '════════════════════════════════════════════════'],
+    ['warn', `[!] Live request failed: ${msg}`],
+    ['info', autoRetryEnabled ? '  Retry failed. No fallback output is enabled.' : '  No fallback output is enabled.'],
+  ];
 }
 
 function getVisibleCommands() {
@@ -1707,11 +1908,24 @@ function setCommandBusyState(isBusy) {
   if (runFirstBtn) runFirstBtn.disabled = isBusy;
   const runAllBtn = document.getElementById('run-all-btn');
   if (runAllBtn && !runAllInProgress) runAllBtn.disabled = isBusy;
+  const clearCacheBtn = document.getElementById('clear-cache-btn');
+  if (clearCacheBtn) clearCacheBtn.disabled = isBusy;
+  const openMediaBtn = document.getElementById('open-media-btn');
+  if (openMediaBtn && !lastMediaUrl) openMediaBtn.disabled = true;
+  const saveMediaBtn = document.getElementById('save-media-btn');
+  if (saveMediaBtn && !lastMediaUrl) saveMediaBtn.disabled = true;
+  const copyMediaBtn = document.getElementById('copy-media-btn');
+  if (copyMediaBtn && !lastMediaUrl) copyMediaBtn.disabled = true;
 }
 
 async function runCommand(c, providedTarget = null) {
   if (!tryAcquireCommandLock()) {
     setTargetValidation('A command is already running. Please wait for it to finish.');
+    return;
+  }
+  if (!allowContactCommands && isContactCommand(c)) {
+    commandInFlight = false;
+    setTargetValidation('Contact commands are safety-locked. Enable "Allow contact commands" to continue.');
     return;
   }
   const target = providedTarget ?? getValidatedTarget();
@@ -1725,6 +1939,11 @@ async function runCommand(c, providedTarget = null) {
     const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
     if (el) el.classList.add('active-card');
     const lines = await fetchLiveLines(target, c.name);
+    const mediaUrl = extractMediaUrlFromLines(lines, c.name);
+    if (mediaUrl) {
+      setLastMediaUrl(mediaUrl);
+      setTargetValidation(`Detected media URL from ${c.name}. Use OPEN/SAVE/COPY MEDIA.`);
+    }
     registerCommandRun(c, target);
     addRecentTarget(target);
     addRecentCommand(c.id, target);
@@ -1770,19 +1989,30 @@ async function runAllVisibleCommands() {
     setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
     return;
   }
+  const runnable = allowContactCommands ? visible : visible.filter(c => !isContactCommand(c));
+  if (!runnable.length) {
+    setTargetValidation('All visible commands are contact commands and safety lock is enabled.');
+    return;
+  }
+  const skipped = visible.length - runnable.length;
   runAllInProgress = true;
   cancelRunAll = false;
   setRunAllButtonState(true);
   try {
-    for (let i = 0; i < visible.length; i++) {
+    for (let i = 0; i < runnable.length; i++) {
       if (cancelRunAll) break;
-      const c = visible[i];
-      setTargetValidation(`Running ${i + 1}/${visible.length}: ${c.name}`);
+      const c = runnable[i];
+      setTargetValidation(`Running ${i + 1}/${runnable.length}: ${c.name}`);
       // Sequential to preserve terminal readability.
       await runCommand(c, target);
+      if (cancelRunAll) break;
+      if (batchDelayMs > 0 && i < runnable.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, batchDelayMs));
+      }
     }
     if (cancelRunAll) setTargetValidation(`Batch run stopped for @${target}.`);
-    else setTargetValidation(`Completed ${visible.length} commands for @${target}.`);
+    else if (skipped > 0) setTargetValidation(`Completed ${runnable.length} commands for @${target}. Skipped ${skipped} contact commands (safety lock).`);
+    else setTargetValidation(`Completed ${runnable.length} commands for @${target}.`);
   } finally {
     runAllInProgress = false;
     cancelRunAll = false;
@@ -2208,6 +2438,39 @@ if (cmdSortSelect) {
     renderCards();
   });
 }
+const useCacheToggle = document.getElementById('use-cache-toggle');
+if (useCacheToggle) {
+  useCacheToggle.addEventListener('change', () => {
+    useCacheEnabled = !!useCacheToggle.checked;
+    persistFunctionalSettings();
+  });
+}
+const autoRetryToggle = document.getElementById('auto-retry-toggle');
+if (autoRetryToggle) {
+  autoRetryToggle.addEventListener('change', () => {
+    autoRetryEnabled = !!autoRetryToggle.checked;
+    persistFunctionalSettings();
+  });
+}
+const allowContactToggle = document.getElementById('allow-contact-toggle');
+if (allowContactToggle) {
+  allowContactToggle.addEventListener('change', () => {
+    allowContactCommands = !!allowContactToggle.checked;
+    persistFunctionalSettings();
+    if (!allowContactCommands && currentCategory === 'Contact') {
+      setTargetValidation('Contact safety lock is on. Contact commands remain visible but are blocked.');
+    }
+  });
+}
+const batchDelayInput = document.getElementById('batch-delay-input');
+if (batchDelayInput) {
+  batchDelayInput.addEventListener('change', () => {
+    const parsed = Number(batchDelayInput.value);
+    batchDelayMs = Number.isFinite(parsed) ? Math.max(0, Math.min(5000, parsed)) : DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
+    batchDelayInput.value = String(batchDelayMs);
+    persistFunctionalSettings();
+  });
+}
 const targetInput = document.getElementById('target-input');
 if (targetInput) {
   targetInput.addEventListener('input', () => {
@@ -2238,18 +2501,31 @@ document.addEventListener('keydown', (e) => {
   }
 });
 initStoredState();
+liveResponseCache = readStoredLiveCache();
+const functionalSettings = readStoredFunctionalSettings();
+useCacheEnabled = functionalSettings.useCache;
+autoRetryEnabled = functionalSettings.autoRetry;
+allowContactCommands = functionalSettings.allowContact;
+batchDelayMs = functionalSettings.batchDelayMs;
+lastMediaUrl = readStoredLastMediaUrl();
 const commandUiState = readStoredCommandUiState();
 setActiveCategory(commandUiState.category);
 commandSearchText = commandUiState.search;
 sortMode = commandUiState.sort;
 if (cmdSearchInput) cmdSearchInput.value = commandSearchText;
 if (cmdSortSelect) cmdSortSelect.value = sortMode;
+if (useCacheToggle) useCacheToggle.checked = useCacheEnabled;
+if (autoRetryToggle) autoRetryToggle.checked = autoRetryEnabled;
+if (allowContactToggle) allowContactToggle.checked = allowContactCommands;
+if (batchDelayInput) batchDelayInput.value = String(batchDelayMs);
 setLiveModePill();
 const initialApiErr = validateApiBaseUrl(getApiBaseUrl());
 setApiHealthPill('warn', initialApiErr || 'API status unknown');
 renderRecentTargets();
 renderRecentCommands();
 updateRunCountPill();
+updateCacheCountPill();
+updateMediaButtons();
 resetTerminal();
 renderCards();
 </script>
