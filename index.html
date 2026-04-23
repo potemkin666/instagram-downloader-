@@ -997,6 +997,7 @@ function filterCards(btn) {
 ═══════════════════════════════════════════════════════════ */
 let _typing = false;
 const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
+const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1073,7 +1074,13 @@ async function fetchLiveLines(target, cmd) {
     const res = await fetch(url, { method: 'GET' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (Array.isArray(data?.lines) && data.lines.every(l => Array.isArray(l) && l.length === 2)) {
+    if (Array.isArray(data?.lines) && data.lines.every(l =>
+      Array.isArray(l)
+      && l.length === 2
+      && typeof l[0] === 'string'
+      && LIVE_LINE_TYPES.has(l[0])
+      && typeof l[1] === 'string'
+    )) {
       return data.lines;
     }
     const out = Array.isArray(data?.output) ? data.output : String(data?.output || data?.result || '').split('\n');
@@ -1095,6 +1102,12 @@ async function fetchLiveLines(target, cmd) {
   }
 }
 
+function selectCommandLines(liveLines, demoLines) {
+  if (!liveLines) return demoLines;
+  const hasUsableLiveResults = liveLines.some(([type]) => type === 'result' || type === 'success');
+  return hasUsableLiveResults ? liveLines : [...liveLines, ...demoLines];
+}
+
 async function runCommand(c) {
   const target = getTarget();
   document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
@@ -1102,9 +1115,7 @@ async function runCommand(c) {
   if (el) el.classList.add('active-card');
   const liveLines = await fetchLiveLines(target, c.name);
   const demoLines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
-  const lines = liveLines && liveLines.some(([type]) => type === 'result' || type === 'success')
-    ? liveLines
-    : (liveLines ? [...liveLines, ...demoLines] : demoLines);
+  const lines = selectCommandLines(liveLines, demoLines);
   animateOutput(lines);
   document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
