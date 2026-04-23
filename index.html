@@ -242,6 +242,31 @@
       margin: 0 auto;
       padding: 40px 20px 80px;
     }
+    .mermaid-panel {
+      margin: 0 auto 28px;
+      max-width: 720px;
+      padding: 12px;
+      background: linear-gradient(145deg, rgba(8,20,56,0.9), rgba(6,12,35,0.95));
+      border: 2px solid rgba(0,245,212,0.24);
+      border-radius: 16px;
+      box-shadow: 0 0 0 1px rgba(0,245,212,0.1) inset, 0 0 22px rgba(0,180,216,0.2);
+    }
+    .mermaid-panel img {
+      width: 100%;
+      display: block;
+      border-radius: 10px;
+      image-rendering: pixelated;
+      box-shadow: 0 0 24px rgba(0,212,184,0.25);
+    }
+    .mermaid-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .mermaid-gif {
+      image-rendering: auto;
+    }
 
     /* ── Section headings ────────────────────────────────── */
     .section-title {
@@ -332,6 +357,16 @@
       border-color: var(--glow);
       box-shadow: 0 0 0 2px rgba(0,245,212,0.12), 0 0 20px rgba(0,245,212,0.1);
     }
+    .validation-msg {
+      margin-top: 12px;
+      min-height: 20px;
+      font-size: 0.82rem;
+      color: var(--gold);
+      text-align: left;
+      max-width: 540px;
+      margin-left: auto;
+      margin-right: auto;
+    }
 
     /* Pixel-art style button */
     .btn-dive {
@@ -408,6 +443,7 @@
     .dot-green  { background:var(--glow);      box-shadow:0 0 6px var(--glow); }
     .dot-yellow { background:var(--gold);      box-shadow:0 0 6px var(--gold); }
     .dot-pink   { background:var(--jelly-pink);box-shadow:0 0 6px var(--jelly-pink); }
+    .dot-red    { background:#ff5f57;          box-shadow:0 0 6px #ff5f57; }
 
     /* ── Category filter tabs ────────────────────────────── */
     .category-tabs {
@@ -416,13 +452,44 @@
       flex-wrap: wrap;
       margin-bottom: 24px;
     }
+    .commands-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .command-search { min-width: 260px; max-width: 460px; }
+    .command-sort { min-width: 220px; max-width: 280px; }
+    .btn-mini {
+      padding: 10px 14px;
+      border: 2px solid rgba(0,245,212,0.3);
+      background: transparent;
+      color: var(--foam);
+      font-family: var(--pixel-font);
+      font-size: 0.6rem;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all var(--transition);
+      box-shadow: 3px 3px 0 rgba(0,245,212,0.1);
+    }
+    .btn-mini:hover {
+      border-color: var(--glow);
+      color: var(--glow);
+      background: rgba(0,245,212,0.08);
+      box-shadow: 3px 3px 0 rgba(0,245,212,0.25);
+    }
+    .btn-mini:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
     .tab-btn {
       padding: 8px 16px;
       border: 2px solid rgba(0,245,212,0.25);
       background: transparent;
       color: var(--foam);
       font-family: var(--pixel-font);
-      font-size: 0.48rem;
+      font-size: 0.58rem;
       cursor: pointer;
       letter-spacing: 1px;
       transition: all var(--transition);
@@ -476,6 +543,27 @@
       border-color: var(--glow);
       box-shadow: 7px 7px 0 rgba(0,245,212,0.3), 0 0 24px rgba(0,245,212,0.15);
     }
+    .command-card.favorite-card {
+      border-color: rgba(255,215,0,0.65);
+      box-shadow: 7px 7px 0 rgba(255,215,0,0.18), 0 0 22px rgba(255,215,0,0.12);
+    }
+    .fav-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 30px;
+      height: 30px;
+      border: 1px solid rgba(0,245,212,0.35);
+      background: rgba(0,0,0,0.22);
+      color: rgba(255,255,255,0.65);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0;
+      border-radius: 6px;
+    }
+    .fav-btn:hover { color: #ffd700; border-color: #ffd700; }
+    .fav-btn.active { color: #ffd700; border-color: #ffd700; background: rgba(255,215,0,0.12); }
 
     .card-icon {
       font-size: 1.6rem;
@@ -504,6 +592,12 @@
       color: var(--foam);
       line-height: 1.55;
       opacity: 0.85;
+    }
+    .card-usage {
+      margin-top: 10px;
+      font-size: 0.72rem;
+      color: rgba(0,245,212,0.75);
+      font-family: 'Courier New', monospace;
     }
     .cat-Profile    .card-category { color: var(--aqua); }
     .cat-Social     .card-category { color: var(--teal); }
@@ -540,6 +634,25 @@
       letter-spacing: 2px;
       text-shadow: 0 0 8px rgba(0,245,212,0.5);
     }
+    .terminal-tools {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-top {
+      padding: 5px 9px;
+      border: 2px solid rgba(0,245,212,0.24);
+      background: transparent;
+      color: var(--foam);
+      font-family: var(--pixel-font);
+      font-size: 0.6rem;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+    .btn-top:hover {
+      border-color: var(--glow);
+      color: var(--glow);
+      box-shadow: 0 0 10px rgba(0,245,212,0.12);
+    }
 
     .terminal-body {
       padding: 20px 24px;
@@ -571,6 +684,69 @@
       box-shadow:0 0 8px var(--glow);
     }
     @keyframes blink { 50%{opacity:0;} }
+    .recent-wrap {
+      margin-top: 12px;
+      background: rgba(2,4,14,0.75);
+      border: 1px solid rgba(0,245,212,0.18);
+      padding: 10px 12px;
+    }
+    .recent-title {
+      font-family: var(--pixel-font);
+      font-size: 0.6rem;
+      color: var(--teal);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .recent-list {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .recent-chip {
+      border: 1px solid rgba(0,245,212,0.3);
+      background: rgba(0,245,212,0.08);
+      color: var(--foam);
+      font-size: 0.72rem;
+      padding: 5px 8px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+    }
+    .recent-chip:hover {
+      border-color: var(--glow);
+      color: var(--glow);
+    }
+    .recent-targets-wrap {
+      margin-top: 14px;
+      max-width: 680px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: left;
+    }
+    .recent-targets-title {
+      font-family: var(--pixel-font);
+      font-size: 0.58rem;
+      color: var(--teal);
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .recent-targets-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .target-chip {
+      border: 1px solid rgba(0,245,212,0.3);
+      background: rgba(0,245,212,0.08);
+      color: var(--foam);
+      font-size: 0.75rem;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+    }
+    .target-chip:hover {
+      border-color: var(--glow);
+      color: var(--glow);
+    }
 
     /* ── How-to section ─────────────────────────────────── */
     .how-grid {
@@ -656,6 +832,8 @@
       .search-card { padding:24px 16px; }
       .terminal-body { max-height:320px; }
       .logo { font-size:1rem; }
+      .commands-toolbar { flex-direction: column; align-items: stretch; }
+      .command-search { max-width: none; min-width: 0; }
     }
   </style>
 </head>
@@ -692,6 +870,19 @@
 <!-- ── Main ─────────────────────────────────────────────── -->
 <main class="container">
 
+  <section aria-label="Pixel art mermaid">
+    <div class="mermaid-gallery">
+      <div class="mermaid-panel">
+        <img src="https://github.com/user-attachments/assets/6555ed2c-7c52-4557-88be-3516d710bb88"
+             alt="Pixel-art underwater mermaid scene in a bioluminescent cave"/>
+      </div>
+      <div class="mermaid-panel">
+        <img class="mermaid-gif" src="https://github.com/user-attachments/assets/5e8cdc06-34e5-40d2-ad91-df05bfa54418"
+             alt="Animated mermaid pixel-art underwater GIF"/>
+      </div>
+    </div>
+  </section>
+
   <!-- Search -->
   <section aria-label="Target search">
     <div class="search-card">
@@ -708,10 +899,28 @@
           </button>
         </div>
       </div>
+      <div id="target-validation" class="validation-msg" aria-live="polite"></div>
+      <div class="mt-16">
+        <input id="api-url-input" class="search-input" type="url"
+               placeholder="https://your-osint-backend.example.com (optional)"
+               autocomplete="off" spellcheck="false"
+               aria-label="Backend API URL for live mode"/>
+      </div>
+      <div class="commands-toolbar mt-16">
+        <button class="btn-mini" id="api-health-btn" onclick="checkApiHealth()">CHECK API HEALTH</button>
+        <div class="stat-pill" id="api-health-pill"><span class="dot dot-yellow"></span>API status unknown</div>
+      </div>
       <div class="stats-bar">
         <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
-        <div class="stat-pill"><span class="dot dot-yellow"></span>Demo mode active</div>
+        <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Demo mode active</div>
+        <div class="stat-pill" id="run-count-pill"><span class="dot dot-green"></span>0 command runs</div>
         <div class="stat-pill"><span class="dot dot-pink"></span>Public profiles only</div>
+      </div>
+      <div class="recent-targets-wrap">
+        <div class="recent-targets-title">RECENT TARGETS</div>
+        <div id="recent-targets-list" class="recent-targets-list">
+          <div class="t-dim">No recent targets yet.</div>
+        </div>
       </div>
     </div>
   </section>
@@ -722,6 +931,19 @@
   <section aria-label="OSINT commands">
     <h2 class="section-title">🧰 OSINT COMMANDS</h2>
     <p class="section-subtitle">Click a card to run it against the target. Results appear in the terminal below.</p>
+    <div class="commands-toolbar">
+      <input id="command-search-input" class="search-input command-search" type="text"
+             placeholder="Search commands (name, category, description)"
+             autocomplete="off" spellcheck="false" aria-label="Search command cards"/>
+      <select id="command-sort-select" class="search-input command-sort" aria-label="Sort command cards">
+        <option value="default">Sort: Default</option>
+        <option value="name">Sort: Name (A-Z)</option>
+        <option value="category">Sort: Category</option>
+        <option value="used">Sort: Most used</option>
+      </select>
+      <button class="btn-mini" id="run-all-btn" onclick="runAllVisibleCommands()">▶ RUN VISIBLE</button>
+      <div class="stat-pill" id="visible-count-pill"><span class="dot dot-green"></span>0 visible</div>
+    </div>
     <div class="category-tabs" id="cat-tabs" role="tablist">
       <button class="tab-btn active" data-cat="all"        onclick="filterCards(this)" role="tab">ALL</button>
       <button class="tab-btn" data-cat="Profile"     onclick="filterCards(this)" role="tab">PROFILE</button>
@@ -729,6 +951,7 @@
       <button class="tab-btn" data-cat="Content"     onclick="filterCards(this)" role="tab">CONTENT</button>
       <button class="tab-btn" data-cat="Engagement"  onclick="filterCards(this)" role="tab">ENGAGEMENT</button>
       <button class="tab-btn" data-cat="Contact"     onclick="filterCards(this)" role="tab">CONTACT</button>
+      <button class="tab-btn" data-cat="favorites"   onclick="filterCards(this)" role="tab">FAVORITES</button>
     </div>
     <div class="commands-grid" id="commands-grid"></div>
   </section>
@@ -745,12 +968,23 @@
         <span class="tb-dot tb-yellow"></span>
         <span class="tb-dot tb-green"></span>
         <span class="tb-title">oceangram@osint — bioluminescent shell</span>
+        <div class="terminal-tools">
+          <button class="btn-top" onclick="retryLastCommand()">RETRY</button>
+          <button class="btn-top" onclick="clearTerminal()">CLEAR</button>
+          <button class="btn-top" onclick="exportTerminal()">EXPORT</button>
+        </div>
       </div>
       <div class="terminal-body" id="terminal-body">
         <div class="t-prompt">🌊 OceanGram v1.0.0 — bioluminescent shell ready</div>
         <div class="t-dim">════════════════════════════════════════════════</div>
         <div class="t-info">Enter a target username, then click any command card.</div>
         <div class="t-dim mt-8"><span class="t-cursor"></span></div>
+      </div>
+    </div>
+    <div class="recent-wrap">
+      <div class="recent-title">RECENT COMMANDS</div>
+      <div id="recent-commands" class="recent-list">
+        <div class="t-dim">No command history yet.</div>
       </div>
     </div>
   </section>
@@ -924,7 +1158,7 @@ const DEMO = {
     ['dim',    '════════════════════════════════════════════════'],
     ['label',  `[ ${cmd} ]`],
     ['info',   `  Fetching data for @${t}…`],
-    ['result', `  [demo] This command queries the live Instagram API.`],
+    ['result', `  [demo] This is a UI simulation and does not query Instagram.`],
     ['result', `  Results depend on privacy settings and API rate limits.`],
     ['warn',   `  [!] Demo mode — no real data returned`],
     ['success', `[✔] Command completed (simulated)`],
@@ -934,39 +1168,83 @@ const DEMO = {
 /* ═══════════════════════════════════════════════════════════
    RENDER CARDS
 ═══════════════════════════════════════════════════════════ */
-function renderCards(filter = 'all') {
+function renderCards() {
   const grid = document.getElementById('commands-grid');
   grid.innerHTML = '';
-  COMMANDS
-    .filter(c => filter === 'all' || c.cat === filter)
-    .forEach(c => {
-      const div = document.createElement('div');
-      div.className = `command-card cat-${c.cat}`;
-      div.dataset.id = c.id;
-      div.setAttribute('role','button');
-      div.setAttribute('tabindex','0');
-      div.setAttribute('aria-label',`Run ${c.name} command`);
-      div.innerHTML = `
-        <span class="card-icon">${c.icon}</span>
-        <div class="card-category">${c.cat.toUpperCase()}</div>
-        <div class="card-name">${c.name}</div>
-        <div class="card-desc">${c.desc}</div>`;
-      div.addEventListener('click', () => runCommand(c));
-      div.addEventListener('keydown', (e) => { if (e.key==='Enter'||e.key===' ') runCommand(c); });
-      grid.appendChild(div);
+  const visible = getVisibleCommands();
+  visible.forEach(c => {
+    const isFavorite = favoriteCommandIds.has(c.id);
+    const runCount = commandRunCounts[c.id] || 0;
+    const div = document.createElement('div');
+    div.className = `command-card cat-${c.cat}${isFavorite ? ' favorite-card' : ''}`;
+    div.dataset.id = c.id;
+    div.setAttribute('role','button');
+    div.setAttribute('tabindex','0');
+    div.setAttribute('aria-label',`Run ${c.name} command`);
+    div.innerHTML = `
+      <button class="fav-btn ${isFavorite ? 'active' : ''}" aria-label="Toggle favorite for ${c.name}" title="Toggle favorite">${isFavorite ? '★' : '☆'}</button>
+      <span class="card-icon">${c.icon}</span>
+      <div class="card-category">${c.cat.toUpperCase()}</div>
+      <div class="card-name">${c.name}</div>
+      <div class="card-desc">${c.desc}</div>
+      <div class="card-usage">Runs: ${runCount}</div>`;
+    div.addEventListener('click', () => runCommand(c));
+    div.addEventListener('keydown', (e) => {
+      if (e.target && e.target.classList && e.target.classList.contains('fav-btn')) return;
+      if (e.key==='Enter'||e.key===' ') runCommand(c);
     });
+    const fav = div.querySelector('.fav-btn');
+    if (fav) {
+      fav.addEventListener('click', (e) => toggleFavorite(c.id, e));
+      fav.addEventListener('keydown', (e) => e.stopPropagation());
+    }
+    grid.appendChild(div);
+  });
+  if (!visible.length) {
+    const empty = document.createElement('div');
+    empty.className = 't-info';
+    empty.textContent = 'No matching commands found.';
+    grid.appendChild(empty);
+  }
+  updateVisibleCount(visible.length);
 }
 
 function filterCards(btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  renderCards(btn.dataset.cat);
+  currentCategory = btn.dataset.cat;
+  renderCards();
 }
 
 /* ═══════════════════════════════════════════════════════════
    TERMINAL
 ═══════════════════════════════════════════════════════════ */
 let _typing = false;
+const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
+const FAVORITES_STORAGE_KEY = 'oceangramFavoriteCommands';
+const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
+const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
+const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
+const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
+const API_TIMEOUT_MS = 15000;
+const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
+// 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
+const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
+const MAX_RECENT_COMMANDS = 8;
+const MAX_RECENT_TARGETS = 8;
+const INITIAL_TERMINAL_LINES = [
+  ['prompt', '🌊 OceanGram v1.0.0 — bioluminescent shell ready'],
+  ['dim', '════════════════════════════════════════════════'],
+  ['info', 'Enter a target username, then click any command card.'],
+];
+let currentCategory = 'all';
+let commandSearchText = '';
+let sortMode = 'default';
+let recentCommands = [];
+let recentTargets = [];
+let favoriteCommandIds = new Set();
+let commandRunCounts = {};
+let lastRunContext = null;
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1004,23 +1282,386 @@ async function animateOutput(lines) {
    ACTIONS
 ═══════════════════════════════════════════════════════════ */
 function getTarget() {
-  return (document.getElementById('target-input').value.trim().replace(/^@/,'') || 'unknown_user');
+  return document.getElementById('target-input').value.trim().replace(/^@/,'');
 }
 
-function runCommand(c) {
+function getApiBaseUrl() {
+  const input = document.getElementById('api-url-input');
+  const raw = input ? input.value.trim() : '';
+  if (!raw) return '';
+  return raw.replace(/\/+$/, '');
+}
+
+function setLiveModePill() {
+  const pill = document.getElementById('live-mode-pill');
+  if (!pill) return;
+  const live = !!getApiBaseUrl();
+  pill.innerHTML = live
+    ? '<span class="dot dot-green"></span>Live mode active'
+    : '<span class="dot dot-yellow"></span>Demo mode active';
+}
+
+function readStoredApiBaseUrl() {
+  try { return localStorage.getItem(API_URL_STORAGE_KEY) || ''; }
+  catch (_) { return ''; }
+}
+
+function persistApiBaseUrl(value) {
+  try {
+    if (value) localStorage.setItem(API_URL_STORAGE_KEY, value);
+    else localStorage.removeItem(API_URL_STORAGE_KEY);
+  } catch (_) {}
+}
+
+function readStoredJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function persistJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (_) {}
+}
+
+function initStoredState() {
+  const favoriteIds = readStoredJson(FAVORITES_STORAGE_KEY, []);
+  favoriteCommandIds = new Set(Array.isArray(favoriteIds) ? favoriteIds : []);
+  const counts = readStoredJson(RUN_COUNT_STORAGE_KEY, {});
+  commandRunCounts = counts && typeof counts === 'object' ? counts : {};
+  const targets = readStoredJson(RECENT_TARGETS_STORAGE_KEY, []);
+  recentTargets = Array.isArray(targets) ? targets.slice(0, MAX_RECENT_TARGETS) : [];
+}
+
+function persistFavorites() {
+  persistJson(FAVORITES_STORAGE_KEY, Array.from(favoriteCommandIds));
+}
+
+function persistRunCounts() {
+  persistJson(RUN_COUNT_STORAGE_KEY, commandRunCounts);
+}
+
+function persistRecentTargets() {
+  persistJson(RECENT_TARGETS_STORAGE_KEY, recentTargets);
+}
+
+function parseLiveOutputLines(data) {
+  if (Array.isArray(data?.lines) && data.lines.every(l =>
+    Array.isArray(l)
+    && l.length === 2
+    && typeof l[0] === 'string'
+    && LIVE_LINE_TYPES.has(l[0])
+    && typeof l[1] === 'string'
+  )) {
+    return data.lines;
+  }
+
+  let rawOutput = data?.output;
+  if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') {
+    rawOutput = data?.result;
+  }
+  if (typeof rawOutput === 'undefined' || rawOutput === null) {
+    rawOutput = '';
+  }
+
+  const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
+  return normalized.map(s => {
+    const text = String(s);
+    return ['result', text.length ? text : ' '];
+  });
+}
+
+function setTargetValidation(message = '') {
+  const el = document.getElementById('target-validation');
+  if (!el) return;
+  el.textContent = message;
+}
+
+function validateTarget(target) {
+  if (!target) return 'Enter a target username.';
+  if (!INSTAGRAM_USERNAME_REGEX.test(target)) return 'Invalid username format. Use 1-30 letters, numbers, dots, or underscores. No leading, trailing, or consecutive dots.';
+  return '';
+}
+
+function getValidatedTarget() {
   const target = getTarget();
+  const err = validateTarget(target);
+  if (err) {
+    setTargetValidation(err);
+    return null;
+  }
+  setTargetValidation('');
+  return target;
+}
+
+async function fetchLiveLines(target, cmd) {
+  const base = getApiBaseUrl();
+  if (!base) return null;
+  const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const data = await res.json();
+    const payload = parseLiveOutputLines(data);
+    return [
+      ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+      ['dim', '════════════════════════════════════════════════'],
+      ['label', `[ ${cmd} — live ]`],
+      ...payload,
+      ['success', '[✔] Live command completed'],
+    ];
+  } catch (err) {
+    const msg = err?.name === 'AbortError' ? 'request timed out' : 'connection error';
+    return [
+      ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+      ['dim', '════════════════════════════════════════════════'],
+      ['warn', `[!] Live request failed: ${msg}`],
+      ['info', '  Falling back to demo output.'],
+    ];
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function selectCommandLines(liveLines, demoLines) {
+  if (!liveLines) return demoLines;
+  const hasUsableLiveResults = liveLines.some(([type]) => LIVE_COMPLETION_TYPES.has(type));
+  return hasUsableLiveResults ? liveLines : [...liveLines, ...demoLines];
+}
+
+function getVisibleCommands() {
+  const q = commandSearchText.trim().toLowerCase();
+  const filtered = COMMANDS.filter(c => {
+    if (currentCategory === 'favorites' && !favoriteCommandIds.has(c.id)) return false;
+    if (currentCategory !== 'all' && currentCategory !== 'favorites' && c.cat !== currentCategory) return false;
+    if (!q) return true;
+    const haystack = `${c.name} ${c.cat} ${c.desc}`.toLowerCase();
+    return haystack.includes(q);
+  });
+  return sortCommands(filtered);
+}
+
+function sortCommands(list) {
+  const sorted = [...list];
+  if (sortMode === 'name') {
+    sorted.sort((a, b) => a.name.localeCompare(b.name));
+  } else if (sortMode === 'category') {
+    sorted.sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
+  } else if (sortMode === 'used') {
+    sorted.sort((a, b) => (commandRunCounts[b.id] || 0) - (commandRunCounts[a.id] || 0) || a.name.localeCompare(b.name));
+  }
+  return sorted;
+}
+
+function toggleFavorite(commandId, evt) {
+  if (evt) {
+    evt.preventDefault();
+    evt.stopPropagation();
+  }
+  if (favoriteCommandIds.has(commandId)) favoriteCommandIds.delete(commandId);
+  else favoriteCommandIds.add(commandId);
+  persistFavorites();
+  renderCards();
+}
+
+function updateVisibleCount(count) {
+  const pill = document.getElementById('visible-count-pill');
+  if (!pill) return;
+  pill.innerHTML = `<span class="dot dot-green"></span>${count} visible`;
+}
+
+function updateRunCountPill() {
+  const pill = document.getElementById('run-count-pill');
+  if (!pill) return;
+  const totalRuns = Object.values(commandRunCounts).reduce((sum, n) => sum + (Number(n) || 0), 0);
+  pill.innerHTML = `<span class="dot dot-green"></span>${totalRuns} command runs`;
+}
+
+function addRecentCommand(commandId, target) {
+  recentCommands = [{ commandId, target }, ...recentCommands
+    .filter(x => !(x.commandId === commandId && x.target === target))]
+    .slice(0, MAX_RECENT_COMMANDS);
+  renderRecentCommands();
+}
+
+function renderRecentCommands() {
+  const host = document.getElementById('recent-commands');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!recentCommands.length) {
+    host.innerHTML = '<div class="t-dim">No command history yet.</div>';
+    return;
+  }
+  recentCommands.forEach((item, idx) => {
+    const b = document.createElement('button');
+    b.className = 'recent-chip';
+    b.textContent = `@${item.target} :: ${item.commandId}`;
+    b.addEventListener('click', () => rerunRecent(idx));
+    host.appendChild(b);
+  });
+}
+
+async function rerunRecent(index) {
+  const item = recentCommands[index];
+  if (!item) return;
+  const cmd = COMMANDS.find(c => c.id === item.commandId);
+  if (!cmd) return;
+  const tInput = document.getElementById('target-input');
+  if (tInput) tInput.value = item.target;
+  await runCommand(cmd, item.target);
+}
+
+function addRecentTarget(target) {
+  if (!target) return;
+  recentTargets = [target, ...recentTargets.filter(t => t !== target)].slice(0, MAX_RECENT_TARGETS);
+  persistRecentTargets();
+  renderRecentTargets();
+}
+
+function renderRecentTargets() {
+  const host = document.getElementById('recent-targets-list');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!recentTargets.length) {
+    host.innerHTML = '<div class="t-dim">No recent targets yet.</div>';
+    return;
+  }
+  recentTargets.forEach(target => {
+    const chip = document.createElement('button');
+    chip.className = 'target-chip';
+    chip.textContent = `@${target}`;
+    chip.addEventListener('click', () => {
+      const input = document.getElementById('target-input');
+      if (input) input.value = target;
+      setTargetValidation('');
+    });
+    host.appendChild(chip);
+  });
+}
+
+function registerCommandRun(command, target) {
+  commandRunCounts[command.id] = (commandRunCounts[command.id] || 0) + 1;
+  persistRunCounts();
+  lastRunContext = { commandId: command.id, target };
+  updateRunCountPill();
+}
+
+function setApiHealthPill(status, text) {
+  const pill = document.getElementById('api-health-pill');
+  if (!pill) return;
+  if (status === 'ok') pill.innerHTML = `<span class="dot dot-green"></span>${text}`;
+  else if (status === 'warn') pill.innerHTML = `<span class="dot dot-yellow"></span>${text}`;
+  else pill.innerHTML = `<span class="dot dot-red"></span>${text}`;
+}
+
+async function checkApiHealth() {
+  const base = getApiBaseUrl();
+  if (!base) {
+    setApiHealthPill('warn', 'Set backend URL first');
+    return;
+  }
+  const btn = document.getElementById('api-health-btn');
+  if (btn) btn.disabled = true;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_HEALTH_CHECK_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base}/api/health`, { method: 'GET', signal: controller.signal });
+    if (res.ok) setApiHealthPill('ok', 'API reachable');
+    else setApiHealthPill('warn', `API responded ${res.status}`);
+  } catch (_) {
+    setApiHealthPill('error', 'API unreachable');
+  } finally {
+    clearTimeout(timeoutId);
+    if (btn) btn.disabled = false;
+  }
+}
+
+function resetTerminal() {
+  const body = document.getElementById('terminal-body');
+  if (!body) return;
+  body.innerHTML = '';
+  INITIAL_TERMINAL_LINES.forEach(([type, text]) => {
+    const d = document.createElement('div');
+    d.className = `t-${type}`;
+    d.textContent = text;
+    body.appendChild(d);
+  });
+  const last = document.createElement('div');
+  last.className = 't-dim mt-8';
+  last.innerHTML = '<span class="t-cursor"></span>';
+  body.appendChild(last);
+}
+
+function clearTerminal() {
+  resetTerminal();
+}
+
+function exportTerminal() {
+  const body = document.getElementById('terminal-body');
+  if (!body) return;
+  const text = Array.from(body.children).map(el => el.textContent || '').join('\n').trim();
+  if (!text) return;
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const stamp = formatTimestampForFilename();
+  a.download = `oceangram-terminal-${stamp}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function formatTimestampForFilename() {
+  return new Date().toISOString().replace(/[:]/g, '-').replace(/\..+$/, '');
+}
+
+async function retryLastCommand() {
+  if (!lastRunContext) {
+    setTargetValidation('No previous command to retry yet.');
+    return;
+  }
+  const cmd = COMMANDS.find(c => c.id === lastRunContext.commandId);
+  if (!cmd) {
+    setTargetValidation('Last command is no longer available.');
+    return;
+  }
+  const tInput = document.getElementById('target-input');
+  if (tInput) tInput.value = lastRunContext.target;
+  await runCommand(cmd, lastRunContext.target);
+}
+
+async function runCommand(c, providedTarget = null) {
+  const target = providedTarget ?? getValidatedTarget();
+  if (!target) return;
   document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
   const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
   if (el) el.classList.add('active-card');
-  const lines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
-  animateOutput(lines);
+  const liveLines = await fetchLiveLines(target, c.name);
+  const demoLines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
+  const lines = selectCommandLines(liveLines, demoLines);
+  registerCommandRun(c, target);
+  addRecentTarget(target);
+  addRecentCommand(c.id, target);
+  await animateOutput(lines);
+  renderCards();
   document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 function startScan() {
+  const target = getValidatedTarget();
+  if (!target) return;
+  addRecentTarget(target);
   const btn = document.getElementById('dive-btn');
   btn.classList.add('loading');
-  const target = getTarget();
   setTimeout(() => {
     btn.classList.remove('loading');
     animateOutput([
@@ -1034,6 +1675,29 @@ function startScan() {
     ]);
     document.querySelector('.commands-grid').scrollIntoView({ behavior:'smooth', block:'start' });
   }, 1200);
+}
+
+async function runAllVisibleCommands() {
+  const target = getValidatedTarget();
+  if (!target) return;
+  const visible = getVisibleCommands();
+  if (!visible.length) {
+    setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
+    return;
+  }
+  const btn = document.getElementById('run-all-btn');
+  if (btn) btn.disabled = true;
+  try {
+    for (let i = 0; i < visible.length; i++) {
+      const c = visible[i];
+      setTargetValidation(`Running ${i + 1}/${visible.length}: ${c.name}`);
+      // Sequential to preserve terminal readability.
+      await runCommand(c, target);
+    }
+    setTargetValidation(`Completed ${visible.length} commands for @${target}.`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 document.getElementById('target-input').addEventListener('keydown', (e) => {
@@ -1416,6 +2080,44 @@ function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 /* ═══════════════════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════════════════ */
+const apiInput = document.getElementById('api-url-input');
+if (apiInput) {
+  apiInput.value = readStoredApiBaseUrl();
+  apiInput.addEventListener('change', () => {
+    const normalized = getApiBaseUrl();
+    apiInput.value = normalized;
+    persistApiBaseUrl(normalized);
+    setLiveModePill();
+    setApiHealthPill('warn', normalized ? 'API status unknown' : 'Set backend URL first');
+  });
+}
+const cmdSearchInput = document.getElementById('command-search-input');
+if (cmdSearchInput) {
+  cmdSearchInput.addEventListener('input', () => {
+    commandSearchText = cmdSearchInput.value || '';
+    renderCards();
+  });
+}
+const cmdSortSelect = document.getElementById('command-sort-select');
+if (cmdSortSelect) {
+  cmdSortSelect.addEventListener('change', () => {
+    sortMode = cmdSortSelect.value || 'default';
+    renderCards();
+  });
+}
+const targetInput = document.getElementById('target-input');
+if (targetInput) {
+  targetInput.addEventListener('input', () => {
+    if (!targetInput.value.trim()) setTargetValidation('');
+  });
+}
+initStoredState();
+setLiveModePill();
+setApiHealthPill('warn', getApiBaseUrl() ? 'API status unknown' : 'Set backend URL first');
+renderRecentTargets();
+renderRecentCommands();
+updateRunCountPill();
+resetTerminal();
 renderCards();
 </script>
 </body>

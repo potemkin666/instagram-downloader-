@@ -4,7 +4,9 @@ An ocean-themed GitHub Pages UI for Instagram OSINT reconnaissance, inspired by 
 
 ## 🌐 Live Demo
 
-Enable **GitHub Pages** (Settings → Pages → Branch: `main`, Folder: `/root`) and visit:
+GitHub Pages is enabled for this repository.
+
+Use **Settings → Pages** with **Branch: `main`** and **Folder: `/ (root)`**, then visit:
 
 ```
 https://<your-username>.github.io/instagram-downloader-/
@@ -15,6 +17,16 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Ocean-themed UI** — deep-sea gradient, animated bubbles, shimmering particle canvas, and SVG waves
 - **20 OSINT command cards** — organised by category (Profile, Social, Content, Engagement, Contact)
 - **Interactive terminal panel** — click any card to see simulated command output with typewriter animation
+- **Optional live mode** — set a backend API URL in the UI to fetch real command results
+- **Command search + visible-runner** — search command cards and run all currently visible commands in sequence
+- **Input validation + recent history** — validate Instagram usernames and quickly rerun recent command/target pairs
+- **Terminal utilities** — clear terminal output and export terminal logs to `.txt`
+- **Mermaid media gallery** — includes static and animated mermaid pixel-art panels
+- **Favorites + favorites tab** — star frequently used commands and filter to favorites only
+- **Sortable command grid** — order commands by default, name, category, or most-used
+- **API health indicator** — check backend reachability from the UI with visible status
+- **Retry last command** — instantly rerun your most recent command/target pair
+- **Recent target chips** — switch targets quickly with one-click recall
 - **Filterable command grid** — filter by category tabs
 - **Quick-start code block** — copy the Osintgram install commands in one click
 - **Fully responsive** — works on mobile and desktop
@@ -39,6 +51,28 @@ pip install -r requirements.txt
 make setup
 python3 main.py <target_username>
 ```
+
+## 🔌 Live API integration
+
+To run commands against a real backend from the UI:
+
+1. Start your backend service (for example, a wrapper around Osintgram).
+2. In OceanGram, paste the backend base URL into the **Backend API URL** field.
+3. Click any command card.
+
+OceanGram calls:
+
+```
+GET <backend-base-url>/api/command?target=<username>&command=<command>
+```
+
+Supported response formats:
+
+- `{ "lines": [["prompt","..."], ["result","..."], ["success","..."]] }`
+- `{ "output": "line 1\nline 2\nline 3" }`
+- `{ "output": ["line 1", "line 2"] }`
+
+If no backend URL is set, or the live request fails, the UI falls back to demo output.
 
 ## ⚠️ Disclaimer
 
