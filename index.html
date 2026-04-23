@@ -1132,7 +1132,7 @@ const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
 const API_TIMEOUT_MS = 15000;
-const TARGET_USERNAME_RE = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
+const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
 const INITIAL_TERMINAL_LINES = [
   ['prompt', '🌊 OceanGram v1.0.0 — bioluminescent shell ready'],
@@ -1244,7 +1244,7 @@ function setTargetValidation(message = '') {
 
 function validateTarget(target) {
   if (!target) return 'Enter a target username.';
-  if (!TARGET_USERNAME_RE.test(target)) return 'Invalid username format. Use letters, numbers, dot, underscore (max 30).';
+  if (!INSTAGRAM_USERNAME_REGEX.test(target)) return 'Invalid username format. Use 1-30 letters, numbers, dots, or underscores. No leading, trailing, or consecutive dots.';
   return '';
 }
 
@@ -1267,7 +1267,7 @@ async function fetchLiveLines(target, cmd) {
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   try {
     const res = await fetch(url, { method: 'GET', signal: controller.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
     const data = await res.json();
     const payload = parseLiveOutputLines(data);
     return [
@@ -1375,7 +1375,8 @@ function exportTerminal() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `oceangram-terminal-${Date.now()}.txt`;
+  const stamp = new Date().toISOString().replace(/[:]/g, '-').replace(/\..+$/, '');
+  a.download = `oceangram-terminal-${stamp}.txt`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1421,7 +1422,7 @@ async function runAllVisibleCommands() {
   if (!target) return;
   const visible = getVisibleCommands();
   if (!visible.length) {
-    setTargetValidation('No commands visible. Adjust category or search.');
+    setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
     return;
   }
   const btn = document.getElementById('run-all-btn');
