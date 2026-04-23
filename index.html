@@ -1161,11 +1161,13 @@ const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'wa
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
 const API_HEALTH_DEBOUNCE_MS = 700;
-const LIVE_FETCH_ATTEMPTS_MAX = 2;
+const LIVE_FETCH_TOTAL_ATTEMPTS = 2;
 const RUN_ALL_LABEL_DEFAULT = 'RUN VISIBLE';
 const RUN_ALL_LABEL_STOP = 'STOP';
 const COMMAND_CATEGORIES = new Set(['all', 'Profile', 'Social', 'Content', 'Engagement', 'Contact', 'favorites']);
 const DEFAULT_COMMAND_UI_STATE = { category: 'all', search: '', sort: 'default' };
+const MIN_BATCH_DELAY_MS = 0;
+const MAX_BATCH_DELAY_MS = 5000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
 const MAX_LIVE_CACHE_ITEMS = 120;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
@@ -1353,7 +1355,7 @@ function readStoredFunctionalSettings() {
     autoRetry: saved.autoRetry !== false,
     allowContact: saved.allowContact === true,
     batchDelayMs: Number.isFinite(Number(saved.batchDelayMs))
-      ? Math.max(0, Math.min(5000, Number(saved.batchDelayMs)))
+      ? Math.max(MIN_BATCH_DELAY_MS, Math.min(MAX_BATCH_DELAY_MS, Number(saved.batchDelayMs)))
       : DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs,
   };
 }
@@ -1454,11 +1456,15 @@ function extractUrlsFromText(text) {
 }
 
 function looksLikeMediaUrl(url) {
-  const u = String(url || '').toLowerCase();
-  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/.test(u)
-    || u.includes('instagram')
-    || u.includes('cdninstagram')
-    || u.includes('profile');
+  const raw = String(url || '').trim();
+  if (!raw) return false;
+  const u = raw.toLowerCase();
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/.test(u)) return true;
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    if (host.includes('instagram.com') || host.includes('cdninstagram.com')) return true;
+  } catch (_) {}
+  return u.includes('profile');
 }
 
 function extractMediaUrlFromLines(lines, commandName = '') {
@@ -1468,6 +1474,7 @@ function extractMediaUrlFromLines(lines, commandName = '') {
     extractUrlsFromText(String(text || '')).forEach(url => candidates.push(url));
   });
   if (!candidates.length) return '';
+  // Osintgram `propic` outputs the primary profile picture URL first.
   if (commandName === 'propic') return candidates[0];
   return candidates.find(looksLikeMediaUrl) || candidates[0];
 }
@@ -1530,6 +1537,16 @@ function tryAcquireCommandLock() {
   if (commandInFlight) return false;
   commandInFlight = true;
   return true;
+}
+
+async function waitForBatchDelay(delayMs) {
+  const end = Date.now() + delayMs;
+  while (Date.now() < end) {
+    if (cancelRunAll) return false;
+    const step = Math.min(100, Math.max(20, end - Date.now()));
+    await new Promise(resolve => setTimeout(resolve, step));
+  }
+  return !cancelRunAll;
 }
 
 function isEditableElement(target) {
@@ -1609,7 +1626,7 @@ async function fetchLiveLines(target, cmd) {
     }
   }
   const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
-  const maxAttempts = autoRetryEnabled ? LIVE_FETCH_ATTEMPTS_MAX : 1;
+  const maxAttempts = autoRetryEnabled ? LIVE_FETCH_TOTAL_ATTEMPTS : 1;
   let attempt = 0;
   let lastError = null;
   while (attempt < maxAttempts) {
@@ -1910,12 +1927,10 @@ function setCommandBusyState(isBusy) {
   if (runAllBtn && !runAllInProgress) runAllBtn.disabled = isBusy;
   const clearCacheBtn = document.getElementById('clear-cache-btn');
   if (clearCacheBtn) clearCacheBtn.disabled = isBusy;
-  const openMediaBtn = document.getElementById('open-media-btn');
-  if (openMediaBtn && !lastMediaUrl) openMediaBtn.disabled = true;
-  const saveMediaBtn = document.getElementById('save-media-btn');
-  if (saveMediaBtn && !lastMediaUrl) saveMediaBtn.disabled = true;
-  const copyMediaBtn = document.getElementById('copy-media-btn');
-  if (copyMediaBtn && !lastMediaUrl) copyMediaBtn.disabled = true;
+  ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn && !lastMediaUrl) btn.disabled = true;
+  });
 }
 
 async function runCommand(c, providedTarget = null) {
@@ -2007,7 +2022,8 @@ async function runAllVisibleCommands() {
       await runCommand(c, target);
       if (cancelRunAll) break;
       if (batchDelayMs > 0 && i < runnable.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, batchDelayMs));
+        const continueBatch = await waitForBatchDelay(batchDelayMs);
+        if (!continueBatch) break;
       }
     }
     if (cancelRunAll) setTargetValidation(`Batch run stopped for @${target}.`);
@@ -2466,7 +2482,9 @@ const batchDelayInput = document.getElementById('batch-delay-input');
 if (batchDelayInput) {
   batchDelayInput.addEventListener('change', () => {
     const parsed = Number(batchDelayInput.value);
-    batchDelayMs = Number.isFinite(parsed) ? Math.max(0, Math.min(5000, parsed)) : DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
+    batchDelayMs = Number.isFinite(parsed)
+      ? Math.max(MIN_BATCH_DELAY_MS, Math.min(MAX_BATCH_DELAY_MS, parsed))
+      : DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
     batchDelayInput.value = String(batchDelayMs);
     persistFunctionalSettings();
   });
@@ -2482,6 +2500,7 @@ document.addEventListener('keydown', (e) => {
   const withMeta = e.ctrlKey || e.metaKey;
   const target = e.target;
   const isEditable = isEditableElement(target);
+  // Keep normal typing behavior in editable fields, except global discoverability shortcuts.
   if (isEditable && !(withMeta && key === 'k') && key !== 'escape') return;
   if (withMeta && key === 'enter') {
     e.preventDefault();
