@@ -998,6 +998,8 @@ function filterCards(btn) {
 let _typing = false;
 const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
+const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
+const API_TIMEOUT_MS = 15000;
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1086,7 +1088,10 @@ function parseLiveOutputLines(data) {
   }
 
   const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
-  return normalized.map(s => ['result', String(s).length ? String(s) : ' ']);
+  return normalized.map(s => {
+    const text = String(s);
+    return ['result', text.length ? text : ' '];
+  });
 }
 
 async function fetchLiveLines(target, cmd) {
@@ -1094,7 +1099,7 @@ async function fetchLiveLines(target, cmd) {
   if (!base) return null;
   const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   try {
     const res = await fetch(url, { method: 'GET', signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1108,7 +1113,7 @@ async function fetchLiveLines(target, cmd) {
       ['success', '[✔] Live command completed'],
     ];
   } catch (err) {
-    const msg = err?.name === 'AbortError' ? 'request timed out' : err.message;
+    const msg = err?.name === 'AbortError' ? 'request timed out' : 'connection error';
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
@@ -1122,7 +1127,7 @@ async function fetchLiveLines(target, cmd) {
 
 function selectCommandLines(liveLines, demoLines) {
   if (!liveLines) return demoLines;
-  const hasUsableLiveResults = liveLines.some(([type]) => type === 'result' || type === 'success');
+  const hasUsableLiveResults = liveLines.some(([type]) => LIVE_COMPLETION_TYPES.has(type));
   return hasUsableLiveResults ? liveLines : [...liveLines, ...demoLines];
 }
 
