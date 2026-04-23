@@ -1701,8 +1701,12 @@ async function runCommand(c, providedTarget = null) {
     setTargetValidation('A command is already running. Please wait for it to finish.');
     return;
   }
+  commandInFlight = true;
   const target = providedTarget ?? getValidatedTarget();
-  if (!target) return;
+  if (!target) {
+    commandInFlight = false;
+    return;
+  }
   setCommandBusyState(true);
   try {
     document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
@@ -2203,7 +2207,7 @@ document.addEventListener('keydown', (e) => {
   const withMeta = e.ctrlKey || e.metaKey;
   const target = e.target;
   const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
-  const isEditable = !!(target && (target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select'));
+  const isEditable = target && (target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select');
   if (isEditable && !(withMeta && key === 'k') && key !== 'escape') return;
   if (withMeta && key === 'enter') {
     e.preventDefault();
