@@ -242,32 +242,6 @@
       margin: 0 auto;
       padding: 40px 20px 80px;
     }
-    .mermaid-panel {
-      margin: 0 auto 28px;
-      max-width: 720px;
-      padding: 12px;
-      background: linear-gradient(145deg, rgba(8,20,56,0.9), rgba(6,12,35,0.95));
-      border: 2px solid rgba(0,245,212,0.24);
-      border-radius: 16px;
-      box-shadow: 0 0 0 1px rgba(0,245,212,0.1) inset, 0 0 22px rgba(0,180,216,0.2);
-    }
-    .mermaid-panel img {
-      width: 100%;
-      display: block;
-      border-radius: 10px;
-      image-rendering: pixelated;
-      box-shadow: 0 0 24px rgba(0,212,184,0.25);
-    }
-    .mermaid-gallery {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      align-items: start;
-    }
-    .mermaid-gif {
-      image-rendering: auto;
-    }
-
     /* ── Section headings ────────────────────────────────── */
     .section-title {
       font-family: var(--pixel-font);
@@ -483,6 +457,16 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    .btn-mini.stop-mode {
+      border-color: rgba(255,95,87,0.6);
+      color: #ffb3ad;
+      box-shadow: 3px 3px 0 rgba(255,95,87,0.18);
+    }
+    .btn-mini.stop-mode:hover {
+      border-color: #ff5f57;
+      color: #ffd0cc;
+      background: rgba(255,95,87,0.08);
+    }
     .tab-btn {
       padding: 8px 16px;
       border: 2px solid rgba(0,245,212,0.25);
@@ -542,6 +526,11 @@
     .command-card.active-card {
       border-color: var(--glow);
       box-shadow: 7px 7px 0 rgba(0,245,212,0.3), 0 0 24px rgba(0,245,212,0.15);
+    }
+    .command-card.command-card-disabled {
+      opacity: 0.55;
+      pointer-events: none;
+      filter: grayscale(0.35);
     }
     .command-card.favorite-card {
       border-color: rgba(255,215,0,0.65);
@@ -695,6 +684,13 @@
       font-size: 0.6rem;
       color: var(--teal);
       letter-spacing: 1px;
+    }
+    .recent-title-row,
+    .recent-targets-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
       margin-bottom: 8px;
     }
     .recent-list {
@@ -726,8 +722,21 @@
       font-family: var(--pixel-font);
       font-size: 0.58rem;
       color: var(--teal);
-      margin-bottom: 8px;
       letter-spacing: 1px;
+    }
+    .btn-clear-mini {
+      padding: 5px 9px;
+      border: 1px solid rgba(0,245,212,0.35);
+      background: transparent;
+      color: var(--foam);
+      font-family: var(--pixel-font);
+      font-size: 0.45rem;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+    .btn-clear-mini:hover {
+      border-color: var(--glow);
+      color: var(--glow);
     }
     .recent-targets-list {
       display: flex;
@@ -870,19 +879,6 @@
 <!-- ── Main ─────────────────────────────────────────────── -->
 <main class="container">
 
-  <section aria-label="Pixel art mermaid">
-    <div class="mermaid-gallery">
-      <div class="mermaid-panel">
-        <img src="https://github.com/user-attachments/assets/6555ed2c-7c52-4557-88be-3516d710bb88"
-             alt="Pixel-art underwater mermaid scene in a bioluminescent cave"/>
-      </div>
-      <div class="mermaid-panel">
-        <img class="mermaid-gif" src="https://github.com/user-attachments/assets/5e8cdc06-34e5-40d2-ad91-df05bfa54418"
-             alt="Animated mermaid pixel-art underwater GIF"/>
-      </div>
-    </div>
-  </section>
-
   <!-- Search -->
   <section aria-label="Target search">
     <div class="search-card">
@@ -902,7 +898,7 @@
       <div id="target-validation" class="validation-msg" aria-live="polite"></div>
       <div class="mt-16">
         <input id="api-url-input" class="search-input" type="url"
-               placeholder="https://your-osint-backend.example.com (optional)"
+               placeholder="https://your-osint-backend.example.com (required)"
                autocomplete="off" spellcheck="false"
                aria-label="Backend API URL for live mode"/>
       </div>
@@ -912,12 +908,15 @@
       </div>
       <div class="stats-bar">
         <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
-        <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Demo mode active</div>
+        <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Backend URL required</div>
         <div class="stat-pill" id="run-count-pill"><span class="dot dot-green"></span>0 command runs</div>
         <div class="stat-pill"><span class="dot dot-pink"></span>Public profiles only</div>
       </div>
       <div class="recent-targets-wrap">
-        <div class="recent-targets-title">RECENT TARGETS</div>
+        <div class="recent-targets-title-row">
+          <div class="recent-targets-title">RECENT TARGETS</div>
+          <button class="btn-clear-mini" onclick="clearRecentTargets()" type="button">CLEAR</button>
+        </div>
         <div id="recent-targets-list" class="recent-targets-list">
           <div class="t-dim">No recent targets yet.</div>
         </div>
@@ -941,8 +940,17 @@
         <option value="category">Sort: Category</option>
         <option value="used">Sort: Most used</option>
       </select>
-      <button class="btn-mini" id="run-all-btn" onclick="runAllVisibleCommands()">▶ RUN VISIBLE</button>
+      <button class="btn-mini" id="run-first-btn" onclick="runFirstVisibleCommand()">RUN FIRST</button>
+      <button class="btn-mini" id="run-all-btn" onclick="runAllVisibleCommands()">RUN VISIBLE</button>
       <div class="stat-pill" id="visible-count-pill"><span class="dot dot-green"></span>0 visible</div>
+    </div>
+    <div class="commands-toolbar mt-16">
+      <label class="stat-pill"><input id="use-cache-toggle" type="checkbox" checked/> Use cache</label>
+      <label class="stat-pill"><input id="auto-retry-toggle" type="checkbox" checked/> Auto retry once</label>
+      <label class="stat-pill"><input id="allow-contact-toggle" type="checkbox"/> Allow contact commands</label>
+      <label class="stat-pill">Batch delay (ms) <input id="batch-delay-input" class="search-input command-sort" type="number" min="0" max="5000" step="100" value="400" aria-label="Batch delay in milliseconds"/></label>
+      <button class="btn-mini" id="clear-cache-btn" type="button" onclick="clearLiveCache()">CLEAR CACHE</button>
+      <div class="stat-pill" id="cache-count-pill"><span class="dot dot-green"></span>0 cached</div>
     </div>
     <div class="category-tabs" id="cat-tabs" role="tablist">
       <button class="tab-btn active" data-cat="all"        onclick="filterCards(this)" role="tab">ALL</button>
@@ -961,7 +969,7 @@
   <!-- Terminal -->
   <section aria-label="Terminal output">
     <h2 class="section-title">💻 LIVE TERMINAL</h2>
-    <p class="section-subtitle">Simulated output — plug in the real Osintgram backend for live results.</p>
+    <p class="section-subtitle">Live backend output only — set a backend API URL before running commands.</p>
     <div class="terminal-wrap">
       <div class="terminal-topbar">
         <span class="tb-dot tb-red"></span>
@@ -969,9 +977,12 @@
         <span class="tb-dot tb-green"></span>
         <span class="tb-title">oceangram@osint — bioluminescent shell</span>
         <div class="terminal-tools">
-          <button class="btn-top" onclick="retryLastCommand()">RETRY</button>
-          <button class="btn-top" onclick="clearTerminal()">CLEAR</button>
-          <button class="btn-top" onclick="exportTerminal()">EXPORT</button>
+          <button class="btn-top" id="retry-btn" onclick="retryLastCommand()">RETRY</button>
+          <button class="btn-top" id="open-media-btn" onclick="openLastMedia()" disabled>OPEN MEDIA</button>
+          <button class="btn-top" id="save-media-btn" onclick="saveLastMedia()" disabled>SAVE MEDIA</button>
+          <button class="btn-top" id="copy-media-btn" onclick="copyLastMediaUrl()" disabled>COPY MEDIA URL</button>
+          <button class="btn-top" id="clear-btn" onclick="clearTerminal()">CLEAR</button>
+          <button class="btn-top" id="export-btn" onclick="exportTerminal()">EXPORT</button>
         </div>
       </div>
       <div class="terminal-body" id="terminal-body">
@@ -982,7 +993,10 @@
       </div>
     </div>
     <div class="recent-wrap">
-      <div class="recent-title">RECENT COMMANDS</div>
+      <div class="recent-title-row">
+        <div class="recent-title">RECENT COMMANDS</div>
+        <button class="btn-clear-mini" onclick="clearRecentCommands()" type="button">CLEAR</button>
+      </div>
       <div id="recent-commands" class="recent-list">
         <div class="t-dim">No command history yet.</div>
       </div>
@@ -1080,92 +1094,6 @@ const COMMANDS = [
 ];
 
 /* ═══════════════════════════════════════════════════════════
-   DEMO OUTPUT
-═══════════════════════════════════════════════════════════ */
-const DEMO = {
-  info: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command info`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Account Info ]'],
-    ['result', `  Username    :  @${t}`],
-    ['result', `  Full Name   :  ${cap(t)} (demo)`],
-    ['result', `  Followers   :  12,847`],
-    ['result', `  Following   :  934`],
-    ['result', `  Posts       :  218`],
-    ['result', `  Private     :  No`],
-    ['result', `  Verified    :  No`],
-    ['result', `  Bio         :  🌊 Ocean explorer | Diving into the deep`],
-    ['success', `[✔] Done`],
-  ],
-  followers: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command followers`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Followers ]'],
-    ['result', `  @deepsea_dan        (ID: 10023881)`],
-    ['result', `  @mermaid_marina     (ID: 10481920)`],
-    ['result', `  @coral_queen        (ID: 20398471)`],
-    ['result', `  @wave_rider_99      (ID: 30012847)`],
-    ['result', `  @ocean_photography  (ID: 48291038)`],
-    ['dim',    `  … and 12,842 more`],
-    ['success', `[✔] 12,847 followers found`],
-  ],
-  photos: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command photos`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Downloading Photos ]'],
-    ['info',   `  Scanning ${t}'s media…`],
-    ['result', `  [1/5]  output/photo_1.jpg   ██████████ 100%`],
-    ['result', `  [2/5]  output/photo_2.jpg   ██████████ 100%`],
-    ['result', `  [3/5]  output/photo_3.jpg   ██████████ 100%`],
-    ['result', `  [4/5]  output/photo_4.jpg   ██████████ 100%`],
-    ['result', `  [5/5]  output/photo_5.jpg   ██████████ 100%`],
-    ['dim',    `  (showing 5 of 218 — demo mode)`],
-    ['success', `[✔] 5 photos saved to ./output/`],
-  ],
-  hashtags: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command hashtags`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Top Hashtags ]'],
-    ['result', `  #ocean           42 uses`],
-    ['result', `  #underwater      38 uses`],
-    ['result', `  #diving          31 uses`],
-    ['result', `  #marinelife      27 uses`],
-    ['result', `  #coral           19 uses`],
-    ['result', `  #deepblue        15 uses`],
-    ['success', `[✔] 6 unique hashtags extracted`],
-  ],
-  likes: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command likes`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Engagement — Likes ]'],
-    ['result', `  Total posts   :  218`],
-    ['result', `  Total likes   :  487,301`],
-    ['result', `  Avg per post  :  2,235`],
-    ['result', `  Peak post     :  14,820 likes`],
-    ['success', `[✔] Done`],
-  ],
-  comments: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command comments`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Engagement — Comments ]'],
-    ['result', `  Total posts    :  218`],
-    ['result', `  Total comments :  23,847`],
-    ['result', `  Avg per post   :  109`],
-    ['success', `[✔] Done`],
-  ],
-  _default: (t, cmd) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command ${cmd}`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  `[ ${cmd} ]`],
-    ['info',   `  Fetching data for @${t}…`],
-    ['result', `  [demo] This is a UI simulation and does not query Instagram.`],
-    ['result', `  Results depend on privacy settings and API rate limits.`],
-    ['warn',   `  [!] Demo mode — no real data returned`],
-    ['success', `[✔] Command completed (simulated)`],
-  ],
-};
-
-/* ═══════════════════════════════════════════════════════════
    RENDER CARDS
 ═══════════════════════════════════════════════════════════ */
 function renderCards() {
@@ -1210,9 +1138,9 @@ function renderCards() {
 }
 
 function filterCards(btn) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentCategory = btn.dataset.cat;
+  const category = btn && btn.dataset ? btn.dataset.cat : 'all';
+  setActiveCategory(category);
+  persistCommandUiState();
   renderCards();
 }
 
@@ -1224,10 +1152,24 @@ const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
 const FAVORITES_STORAGE_KEY = 'oceangramFavoriteCommands';
 const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
 const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
+const RECENT_COMMANDS_STORAGE_KEY = 'oceangramRecentCommands';
+const COMMAND_UI_STATE_STORAGE_KEY = 'oceangramCommandUiState';
+const LIVE_CACHE_STORAGE_KEY = 'oceangramLiveOutputCache';
+const FUNCTIONAL_SETTINGS_STORAGE_KEY = 'oceangramFunctionalSettings';
+const LAST_MEDIA_URL_STORAGE_KEY = 'oceangramLastMediaUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
-const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
+const API_HEALTH_DEBOUNCE_MS = 700;
+const LIVE_FETCH_TOTAL_ATTEMPTS = 2;
+const RUN_ALL_LABEL_DEFAULT = 'RUN VISIBLE';
+const RUN_ALL_LABEL_STOP = 'STOP';
+const COMMAND_CATEGORIES = new Set(['all', 'Profile', 'Social', 'Content', 'Engagement', 'Contact', 'favorites']);
+const DEFAULT_COMMAND_UI_STATE = { category: 'all', search: '', sort: 'default' };
+const MIN_BATCH_DELAY_MS = 0;
+const MAX_BATCH_DELAY_MS = 5000;
+const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
+const MAX_LIVE_CACHE_ITEMS = 120;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
@@ -1245,6 +1187,16 @@ let recentTargets = [];
 let favoriteCommandIds = new Set();
 let commandRunCounts = {};
 let lastRunContext = null;
+let commandInFlight = false;
+let runAllInProgress = false;
+let cancelRunAll = false;
+let apiHealthDebounceId = null;
+let liveResponseCache = {};
+let useCacheEnabled = DEFAULT_FUNCTIONAL_SETTINGS.useCache;
+let autoRetryEnabled = DEFAULT_FUNCTIONAL_SETTINGS.autoRetry;
+let allowContactCommands = DEFAULT_FUNCTIONAL_SETTINGS.allowContact;
+let batchDelayMs = DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
+let lastMediaUrl = '';
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1295,10 +1247,15 @@ function getApiBaseUrl() {
 function setLiveModePill() {
   const pill = document.getElementById('live-mode-pill');
   if (!pill) return;
-  const live = !!getApiBaseUrl();
-  pill.innerHTML = live
-    ? '<span class="dot dot-green"></span>Live mode active'
-    : '<span class="dot dot-yellow"></span>Demo mode active';
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
+    pill.innerHTML = base
+      ? '<span class="dot dot-yellow"></span>Backend URL invalid'
+      : '<span class="dot dot-yellow"></span>Backend URL required';
+    return;
+  }
+  pill.innerHTML = '<span class="dot dot-green"></span>Live mode active';
 }
 
 function readStoredApiBaseUrl() {
@@ -1336,6 +1293,12 @@ function initStoredState() {
   commandRunCounts = counts && typeof counts === 'object' ? counts : {};
   const targets = readStoredJson(RECENT_TARGETS_STORAGE_KEY, []);
   recentTargets = Array.isArray(targets) ? targets.slice(0, MAX_RECENT_TARGETS) : [];
+  const commands = readStoredJson(RECENT_COMMANDS_STORAGE_KEY, []);
+  recentCommands = Array.isArray(commands)
+    ? commands
+      .filter(item => item && typeof item.commandId === 'string' && typeof item.target === 'string')
+      .slice(0, MAX_RECENT_COMMANDS)
+    : [];
 }
 
 function persistFavorites() {
@@ -1348,6 +1311,254 @@ function persistRunCounts() {
 
 function persistRecentTargets() {
   persistJson(RECENT_TARGETS_STORAGE_KEY, recentTargets);
+}
+
+function persistRecentCommands() {
+  persistJson(RECENT_COMMANDS_STORAGE_KEY, recentCommands);
+}
+
+function persistCommandUiState() {
+  persistJson(COMMAND_UI_STATE_STORAGE_KEY, {
+    category: currentCategory,
+    search: commandSearchText,
+    sort: sortMode,
+  });
+}
+
+function readStoredCommandUiState() {
+  const state = readStoredJson(COMMAND_UI_STATE_STORAGE_KEY, {});
+  if (!state || typeof state !== 'object') return { ...DEFAULT_COMMAND_UI_STATE };
+  return {
+    category: COMMAND_CATEGORIES.has(state.category) ? state.category : DEFAULT_COMMAND_UI_STATE.category,
+    search: typeof state.search === 'string' ? state.search : DEFAULT_COMMAND_UI_STATE.search,
+    sort: ['default', 'name', 'category', 'used'].includes(state.sort) ? state.sort : DEFAULT_COMMAND_UI_STATE.sort,
+  };
+}
+
+function setActiveCategory(category) {
+  const nextCategory = COMMAND_CATEGORIES.has(category) ? category : 'all';
+  currentCategory = nextCategory;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.cat === nextCategory);
+  });
+}
+
+function isContactCommand(command) {
+  return !!(command && command.cat === 'Contact');
+}
+
+function readStoredFunctionalSettings() {
+  const saved = readStoredJson(FUNCTIONAL_SETTINGS_STORAGE_KEY, {});
+  if (!saved || typeof saved !== 'object') return { ...DEFAULT_FUNCTIONAL_SETTINGS };
+  return {
+    useCache: saved.useCache !== false,
+    autoRetry: saved.autoRetry !== false,
+    allowContact: saved.allowContact === true,
+    batchDelayMs: Number.isFinite(Number(saved.batchDelayMs))
+      ? Math.max(MIN_BATCH_DELAY_MS, Math.min(MAX_BATCH_DELAY_MS, Number(saved.batchDelayMs)))
+      : DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs,
+  };
+}
+
+function persistFunctionalSettings() {
+  persistJson(FUNCTIONAL_SETTINGS_STORAGE_KEY, {
+    useCache: useCacheEnabled,
+    autoRetry: autoRetryEnabled,
+    allowContact: allowContactCommands,
+    batchDelayMs,
+  });
+}
+
+function getLiveCacheKey(target, command) {
+  return `${String(target || '').toLowerCase()}::${String(command || '').toLowerCase()}`;
+}
+
+function readStoredLiveCache() {
+  const parsed = readStoredJson(LIVE_CACHE_STORAGE_KEY, {});
+  return parsed && typeof parsed === 'object' ? parsed : {};
+}
+
+function updateCacheCountPill() {
+  const pill = document.getElementById('cache-count-pill');
+  if (!pill) return;
+  const count = Object.keys(liveResponseCache || {}).length;
+  pill.innerHTML = `<span class="dot dot-green"></span>${count} cached`;
+}
+
+function persistLiveCache() {
+  const entries = Object.entries(liveResponseCache || {});
+  if (entries.length > MAX_LIVE_CACHE_ITEMS) {
+    entries.sort((a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0));
+    const trim = entries.length - MAX_LIVE_CACHE_ITEMS;
+    for (let i = 0; i < trim; i++) {
+      delete liveResponseCache[entries[i][0]];
+    }
+  }
+  persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
+  updateCacheCountPill();
+}
+
+function getCachedLiveLines(target, command) {
+  const key = getLiveCacheKey(target, command);
+  const hit = liveResponseCache[key];
+  if (!hit || !Array.isArray(hit.lines)) return null;
+  hit.ts = Date.now();
+  persistLiveCache();
+  return hit.lines.map(([type, text]) => [String(type), String(text)]);
+}
+
+function setCachedLiveLines(target, command, lines) {
+  const key = getLiveCacheKey(target, command);
+  liveResponseCache[key] = {
+    ts: Date.now(),
+    lines: Array.isArray(lines) ? lines.slice(-250).map(([type, text]) => [String(type), String(text)]) : [],
+  };
+  persistLiveCache();
+}
+
+function clearLiveCache() {
+  liveResponseCache = {};
+  persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
+  updateCacheCountPill();
+  setTargetValidation('Cleared cached live command output.');
+}
+
+function readStoredLastMediaUrl() {
+  try { return localStorage.getItem(LAST_MEDIA_URL_STORAGE_KEY) || ''; }
+  catch (_) { return ''; }
+}
+
+function persistLastMediaUrl(url) {
+  try {
+    if (url) localStorage.setItem(LAST_MEDIA_URL_STORAGE_KEY, url);
+    else localStorage.removeItem(LAST_MEDIA_URL_STORAGE_KEY);
+  } catch (_) {}
+}
+
+function updateMediaButtons() {
+  const disabled = !lastMediaUrl;
+  ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = disabled;
+  });
+}
+
+function setLastMediaUrl(url) {
+  lastMediaUrl = String(url || '').trim();
+  persistLastMediaUrl(lastMediaUrl);
+  updateMediaButtons();
+}
+
+function extractUrlsFromText(text) {
+  if (typeof text !== 'string' || !text) return [];
+  const matches = text.match(/https?:\/\/[^\s"'<>]+/gi);
+  return matches ? matches.map(u => u.replace(/[),.;]+$/, '')) : [];
+}
+
+function looksLikeMediaUrl(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return false;
+  const u = raw.toLowerCase();
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/.test(u)) return true;
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    if (host.includes('instagram.com') || host.includes('cdninstagram.com')) return true;
+  } catch (_) {}
+  return false;
+}
+
+function hasMeaningfulOutput(payload) {
+  return Array.isArray(payload)
+    && payload.length > 0
+    && payload.some(([, text]) => String(text || '').trim().length > 0);
+}
+
+function extractMediaUrlFromLines(lines, commandName = '') {
+  if (!Array.isArray(lines)) return '';
+  const candidates = [];
+  lines.forEach(([, text]) => {
+    extractUrlsFromText(String(text || '')).forEach(url => candidates.push(url));
+  });
+  if (!candidates.length) return '';
+  // Osintgram `propic` outputs the primary profile picture URL first.
+  if (commandName === 'propic') return candidates[0];
+  return candidates.find(looksLikeMediaUrl) || candidates[0];
+}
+
+function openLastMedia() {
+  if (!lastMediaUrl) return;
+  window.open(lastMediaUrl, '_blank', 'noopener');
+}
+
+function saveLastMedia() {
+  if (!lastMediaUrl) return;
+  const a = document.createElement('a');
+  a.href = lastMediaUrl;
+  a.download = `oceangram-media-${formatTimestampForFilename()}`;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function copyLastMediaUrl() {
+  if (!lastMediaUrl) return;
+  try {
+    await navigator.clipboard.writeText(lastMediaUrl);
+    setTargetValidation('Copied latest media URL to clipboard.');
+  } catch (_) {
+    setTargetValidation('Unable to copy media URL.');
+  }
+}
+
+function validateApiBaseUrl(base) {
+  if (!base) return 'Set backend URL first';
+  try {
+    const parsed = new URL(base);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return 'Use http:// or https:// backend URL';
+  } catch (_) {
+    return 'Invalid backend URL format';
+  }
+  return '';
+}
+
+function scheduleApiHealthCheck() {
+  if (apiHealthDebounceId) {
+    clearTimeout(apiHealthDebounceId);
+    apiHealthDebounceId = null;
+  }
+  const base = getApiBaseUrl();
+  const err = validateApiBaseUrl(base);
+  if (err) {
+    setApiHealthPill('warn', err);
+    return;
+  }
+  setApiHealthPill('warn', 'Checking API...');
+  apiHealthDebounceId = setTimeout(() => {
+    checkApiHealth();
+  }, API_HEALTH_DEBOUNCE_MS);
+}
+
+function tryAcquireCommandLock() {
+  if (commandInFlight) return false;
+  commandInFlight = true;
+  return true;
+}
+
+async function waitForBatchDelay(delayMs) {
+  const end = Date.now() + delayMs;
+  while (Date.now() < end) {
+    if (cancelRunAll) return false;
+    const step = Math.min(100, Math.max(20, end - Date.now()));
+    await new Promise(resolve => setTimeout(resolve, step));
+  }
+  return !cancelRunAll;
+}
+
+function isEditableElement(target) {
+  if (!target) return false;
+  const tag = target.tagName ? target.tagName.toLowerCase() : '';
+  return target.isContentEditable === true || tag === 'input' || tag === 'textarea' || tag === 'select';
 }
 
 function parseLiveOutputLines(data) {
@@ -1365,9 +1576,7 @@ function parseLiveOutputLines(data) {
   if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') {
     rawOutput = data?.result;
   }
-  if (typeof rawOutput === 'undefined' || rawOutput === null) {
-    rawOutput = '';
-  }
+  if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') return [];
 
   const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
   return normalized.map(s => {
@@ -1401,39 +1610,69 @@ function getValidatedTarget() {
 
 async function fetchLiveLines(target, cmd) {
   const base = getApiBaseUrl();
-  if (!base) return null;
-  const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { method: 'GET', signal: controller.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    const payload = parseLiveOutputLines(data);
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
-      ['label', `[ ${cmd} — live ]`],
-      ...payload,
-      ['success', '[✔] Live command completed'],
+      ['warn', `[!] ${baseErr}`],
+      ['info', '  Update Backend API URL, then run the command again.'],
     ];
-  } catch (err) {
-    const msg = err?.name === 'AbortError' ? 'request timed out' : 'connection error';
-    return [
-      ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
-      ['dim', '════════════════════════════════════════════════'],
-      ['warn', `[!] Live request failed: ${msg}`],
-      ['info', '  Falling back to demo output.'],
-    ];
-  } finally {
-    clearTimeout(timeoutId);
   }
-}
-
-function selectCommandLines(liveLines, demoLines) {
-  if (!liveLines) return demoLines;
-  const hasUsableLiveResults = liveLines.some(([type]) => LIVE_COMPLETION_TYPES.has(type));
-  return hasUsableLiveResults ? liveLines : [...liveLines, ...demoLines];
+  if (useCacheEnabled) {
+    const cached = getCachedLiveLines(target, cmd);
+    if (cached && cached.length) {
+      return [
+        ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+        ['dim', '════════════════════════════════════════════════'],
+        ['label', `[ ${cmd} — cache ]`],
+        ...cached,
+        ['success', '[✔] Command completed (cached)'],
+      ];
+    }
+  }
+  const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
+  const maxAttempts = autoRetryEnabled ? LIVE_FETCH_TOTAL_ATTEMPTS : 1;
+  let attempt = 0;
+  let lastError = null;
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const data = await res.json();
+      const payload = parseLiveOutputLines(data);
+      if (!hasMeaningfulOutput(payload)) {
+        return [
+          ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+          ['dim', '════════════════════════════════════════════════'],
+          ['warn', '[!] Live backend returned no output'],
+        ];
+      }
+      if (useCacheEnabled) setCachedLiveLines(target, cmd, payload);
+      return [
+        ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+        ['dim', '════════════════════════════════════════════════'],
+        ['label', `[ ${cmd} — live${attempt > 1 ? ` retry #${attempt - 1}` : ''} ]`],
+        ...payload,
+        ['success', '[✔] Command completed'],
+      ];
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts) continue;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  const msg = lastError?.name === 'AbortError' ? 'request timed out' : 'connection error';
+  return [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+    ['dim', '════════════════════════════════════════════════'],
+    ['warn', `[!] Live request failed: ${msg}`],
+    ['info', autoRetryEnabled ? '  Retry failed. No fallback output is enabled.' : '  No fallback output is enabled.'],
+  ];
 }
 
 function getVisibleCommands() {
@@ -1488,6 +1727,7 @@ function addRecentCommand(commandId, target) {
   recentCommands = [{ commandId, target }, ...recentCommands
     .filter(x => !(x.commandId === commandId && x.target === target))]
     .slice(0, MAX_RECENT_COMMANDS);
+  persistRecentCommands();
   renderRecentCommands();
 }
 
@@ -1523,6 +1763,20 @@ function addRecentTarget(target) {
   recentTargets = [target, ...recentTargets.filter(t => t !== target)].slice(0, MAX_RECENT_TARGETS);
   persistRecentTargets();
   renderRecentTargets();
+}
+
+function clearRecentTargets() {
+  recentTargets = [];
+  persistRecentTargets();
+  renderRecentTargets();
+  setTargetValidation('Recent targets cleared.');
+}
+
+function clearRecentCommands() {
+  recentCommands = [];
+  persistRecentCommands();
+  renderRecentCommands();
+  setTargetValidation('Recent commands cleared.');
 }
 
 function renderRecentTargets() {
@@ -1563,8 +1817,9 @@ function setApiHealthPill(status, text) {
 
 async function checkApiHealth() {
   const base = getApiBaseUrl();
-  if (!base) {
-    setApiHealthPill('warn', 'Set backend URL first');
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
+    setApiHealthPill('warn', baseErr);
     return;
   }
   const btn = document.getElementById('api-health-btn');
@@ -1639,21 +1894,85 @@ async function retryLastCommand() {
   await runCommand(cmd, lastRunContext.target);
 }
 
-async function runCommand(c, providedTarget = null) {
-  const target = providedTarget ?? getValidatedTarget();
+async function runFirstVisibleCommand() {
+  const target = getValidatedTarget();
   if (!target) return;
-  document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
-  const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
-  if (el) el.classList.add('active-card');
-  const liveLines = await fetchLiveLines(target, c.name);
-  const demoLines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
-  const lines = selectCommandLines(liveLines, demoLines);
-  registerCommandRun(c, target);
-  addRecentTarget(target);
-  addRecentCommand(c.id, target);
-  await animateOutput(lines);
-  renderCards();
-  document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
+  const visible = getVisibleCommands();
+  if (!visible.length) {
+    setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
+    return;
+  }
+  await runCommand(visible[0], target);
+}
+
+function setRunAllButtonState(running) {
+  const btn = document.getElementById('run-all-btn');
+  if (!btn) return;
+  btn.textContent = running ? RUN_ALL_LABEL_STOP : RUN_ALL_LABEL_DEFAULT;
+  btn.classList.toggle('stop-mode', running);
+  btn.disabled = false;
+}
+
+function setCommandBusyState(isBusy) {
+  commandInFlight = isBusy;
+  document.querySelectorAll('.command-card').forEach(card => {
+    card.classList.toggle('command-card-disabled', isBusy);
+    card.setAttribute('aria-disabled', isBusy ? 'true' : 'false');
+    card.setAttribute('tabindex', isBusy ? '-1' : '0');
+  });
+  const diveBtn = document.getElementById('dive-btn');
+  if (diveBtn) diveBtn.disabled = isBusy;
+  const retryBtn = document.getElementById('retry-btn');
+  if (retryBtn) retryBtn.disabled = isBusy;
+  const apiHealthBtn = document.getElementById('api-health-btn');
+  if (apiHealthBtn) apiHealthBtn.disabled = isBusy;
+  const runFirstBtn = document.getElementById('run-first-btn');
+  if (runFirstBtn) runFirstBtn.disabled = isBusy;
+  const runAllBtn = document.getElementById('run-all-btn');
+  if (runAllBtn && !runAllInProgress) runAllBtn.disabled = isBusy;
+  const clearCacheBtn = document.getElementById('clear-cache-btn');
+  if (clearCacheBtn) clearCacheBtn.disabled = isBusy;
+  ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn && !lastMediaUrl) btn.disabled = true;
+  });
+}
+
+async function runCommand(c, providedTarget = null) {
+  if (!tryAcquireCommandLock()) {
+    setTargetValidation('A command is already running. Please wait for it to finish.');
+    return;
+  }
+  if (!allowContactCommands && isContactCommand(c)) {
+    commandInFlight = false;
+    setTargetValidation('Contact commands are safety-locked. Enable "Allow contact commands" to continue.');
+    return;
+  }
+  const target = providedTarget ?? getValidatedTarget();
+  if (!target) {
+    commandInFlight = false;
+    return;
+  }
+  setCommandBusyState(true);
+  try {
+    document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
+    const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
+    if (el) el.classList.add('active-card');
+    const lines = await fetchLiveLines(target, c.name);
+    const mediaUrl = extractMediaUrlFromLines(lines, c.name);
+    if (mediaUrl) {
+      setLastMediaUrl(mediaUrl);
+      setTargetValidation(`Detected media URL from ${c.name}. Use OPEN/SAVE/COPY MEDIA.`);
+    }
+    registerCommandRun(c, target);
+    addRecentTarget(target);
+    addRecentCommand(c.id, target);
+    await animateOutput(lines);
+    renderCards();
+    document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
+  } finally {
+    setCommandBusyState(false);
+  }
 }
 
 function startScan() {
@@ -1678,6 +1997,11 @@ function startScan() {
 }
 
 async function runAllVisibleCommands() {
+  if (runAllInProgress) {
+    cancelRunAll = true;
+    setTargetValidation('Stopping batch run after current command...');
+    return;
+  }
   const target = getValidatedTarget();
   if (!target) return;
   const visible = getVisibleCommands();
@@ -1685,18 +2009,35 @@ async function runAllVisibleCommands() {
     setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
     return;
   }
-  const btn = document.getElementById('run-all-btn');
-  if (btn) btn.disabled = true;
+  const runnable = allowContactCommands ? visible : visible.filter(c => !isContactCommand(c));
+  if (!runnable.length) {
+    setTargetValidation('All visible commands are contact commands and safety lock is enabled.');
+    return;
+  }
+  const skipped = visible.length - runnable.length;
+  runAllInProgress = true;
+  cancelRunAll = false;
+  setRunAllButtonState(true);
   try {
-    for (let i = 0; i < visible.length; i++) {
-      const c = visible[i];
-      setTargetValidation(`Running ${i + 1}/${visible.length}: ${c.name}`);
+    for (let i = 0; i < runnable.length; i++) {
+      if (cancelRunAll) break;
+      const c = runnable[i];
+      setTargetValidation(`Running ${i + 1}/${runnable.length}: ${c.name}`);
       // Sequential to preserve terminal readability.
       await runCommand(c, target);
+      if (cancelRunAll) break;
+      if (batchDelayMs > 0 && i < runnable.length - 1) {
+        const continueBatch = await waitForBatchDelay(batchDelayMs);
+        if (!continueBatch) break;
+      }
     }
-    setTargetValidation(`Completed ${visible.length} commands for @${target}.`);
+    if (cancelRunAll) setTargetValidation(`Batch run stopped for @${target}.`);
+    else if (skipped > 0) setTargetValidation(`Completed ${runnable.length} commands for @${target}. Skipped ${skipped} contact commands (safety lock).`);
+    else setTargetValidation(`Completed ${runnable.length} commands for @${target}.`);
   } finally {
-    if (btn) btn.disabled = false;
+    runAllInProgress = false;
+    cancelRunAll = false;
+    setRunAllButtonState(false);
   }
 }
 
@@ -2073,28 +2414,40 @@ document.head.appendChild(KF);
 })();
 
 /* ═══════════════════════════════════════════════════════════
-   HELPERS
-═══════════════════════════════════════════════════════════ */
-function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-/* ═══════════════════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════════════════ */
 const apiInput = document.getElementById('api-url-input');
 if (apiInput) {
   apiInput.value = readStoredApiBaseUrl();
+  apiInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      checkApiHealth();
+    }
+  });
   apiInput.addEventListener('change', () => {
     const normalized = getApiBaseUrl();
     apiInput.value = normalized;
     persistApiBaseUrl(normalized);
     setLiveModePill();
-    setApiHealthPill('warn', normalized ? 'API status unknown' : 'Set backend URL first');
+    scheduleApiHealthCheck();
+  });
+  apiInput.addEventListener('input', () => {
+    persistApiBaseUrl(getApiBaseUrl());
+    setLiveModePill();
+    scheduleApiHealthCheck();
   });
 }
 const cmdSearchInput = document.getElementById('command-search-input');
 if (cmdSearchInput) {
+  cmdSearchInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    runFirstVisibleCommand();
+  });
   cmdSearchInput.addEventListener('input', () => {
     commandSearchText = cmdSearchInput.value || '';
+    persistCommandUiState();
     renderCards();
   });
 }
@@ -2102,7 +2455,43 @@ const cmdSortSelect = document.getElementById('command-sort-select');
 if (cmdSortSelect) {
   cmdSortSelect.addEventListener('change', () => {
     sortMode = cmdSortSelect.value || 'default';
+    persistCommandUiState();
     renderCards();
+  });
+}
+const useCacheToggle = document.getElementById('use-cache-toggle');
+if (useCacheToggle) {
+  useCacheToggle.addEventListener('change', () => {
+    useCacheEnabled = !!useCacheToggle.checked;
+    persistFunctionalSettings();
+  });
+}
+const autoRetryToggle = document.getElementById('auto-retry-toggle');
+if (autoRetryToggle) {
+  autoRetryToggle.addEventListener('change', () => {
+    autoRetryEnabled = !!autoRetryToggle.checked;
+    persistFunctionalSettings();
+  });
+}
+const allowContactToggle = document.getElementById('allow-contact-toggle');
+if (allowContactToggle) {
+  allowContactToggle.addEventListener('change', () => {
+    allowContactCommands = !!allowContactToggle.checked;
+    persistFunctionalSettings();
+    if (!allowContactCommands && currentCategory === 'Contact') {
+      setTargetValidation('Contact safety lock is on. Contact commands remain visible but are blocked.');
+    }
+  });
+}
+const batchDelayInput = document.getElementById('batch-delay-input');
+if (batchDelayInput) {
+  batchDelayInput.addEventListener('change', () => {
+    const parsed = Number(batchDelayInput.value);
+    batchDelayMs = Number.isFinite(parsed)
+      ? Math.max(MIN_BATCH_DELAY_MS, Math.min(MAX_BATCH_DELAY_MS, parsed))
+      : DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
+    batchDelayInput.value = String(batchDelayMs);
+    persistFunctionalSettings();
   });
 }
 const targetInput = document.getElementById('target-input');
@@ -2111,12 +2500,56 @@ if (targetInput) {
     if (!targetInput.value.trim()) setTargetValidation('');
   });
 }
+document.addEventListener('keydown', (e) => {
+  const key = (e.key || '').toLowerCase();
+  const withMeta = e.ctrlKey || e.metaKey;
+  const target = e.target;
+  const isEditable = isEditableElement(target);
+  // Keep normal typing behavior in editable fields, except global discoverability shortcuts.
+  if (isEditable && !(withMeta && key === 'k') && key !== 'escape') return;
+  if (withMeta && key === 'enter') {
+    e.preventDefault();
+    runAllVisibleCommands();
+    return;
+  }
+  if (withMeta && key === 'k') {
+    const search = document.getElementById('command-search-input');
+    if (!search) return;
+    e.preventDefault();
+    search.focus();
+    search.select();
+    return;
+  }
+  if (key === 'escape') {
+    setTargetValidation('');
+  }
+});
 initStoredState();
+liveResponseCache = readStoredLiveCache();
+const functionalSettings = readStoredFunctionalSettings();
+useCacheEnabled = functionalSettings.useCache;
+autoRetryEnabled = functionalSettings.autoRetry;
+allowContactCommands = functionalSettings.allowContact;
+batchDelayMs = functionalSettings.batchDelayMs;
+lastMediaUrl = readStoredLastMediaUrl();
+const commandUiState = readStoredCommandUiState();
+setActiveCategory(commandUiState.category);
+commandSearchText = commandUiState.search;
+sortMode = commandUiState.sort;
+if (cmdSearchInput) cmdSearchInput.value = commandSearchText;
+if (cmdSortSelect) cmdSortSelect.value = sortMode;
+if (useCacheToggle) useCacheToggle.checked = useCacheEnabled;
+if (autoRetryToggle) autoRetryToggle.checked = autoRetryEnabled;
+if (allowContactToggle) allowContactToggle.checked = allowContactCommands;
+if (batchDelayInput) batchDelayInput.value = String(batchDelayMs);
 setLiveModePill();
-setApiHealthPill('warn', getApiBaseUrl() ? 'API status unknown' : 'Set backend URL first');
+const initialApiErr = validateApiBaseUrl(getApiBaseUrl());
+setApiHealthPill('warn', initialApiErr || 'API status unknown');
 renderRecentTargets();
 renderRecentCommands();
 updateRunCountPill();
+updateCacheCountPill();
+updateMediaButtons();
 resetTerminal();
 renderCards();
 </script>
