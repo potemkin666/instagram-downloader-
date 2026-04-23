@@ -1088,10 +1088,9 @@ const DEMO = {
 /* ═══════════════════════════════════════════════════════════
    RENDER CARDS
 ═══════════════════════════════════════════════════════════ */
-function renderCards(filter = 'all') {
+function renderCards() {
   const grid = document.getElementById('commands-grid');
   grid.innerHTML = '';
-  currentCategory = filter;
   const visible = getVisibleCommands();
   visible.forEach(c => {
     const div = document.createElement('div');
@@ -1122,7 +1121,7 @@ function filterCards(btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   currentCategory = btn.dataset.cat;
-  renderCards(currentCategory);
+  renderCards();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1133,7 +1132,7 @@ const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
 const API_TIMEOUT_MS = 15000;
-const TARGET_USERNAME_RE = /^[A-Za-z0-9._]{1,30}$/;
+const TARGET_USERNAME_RE = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
 const INITIAL_TERMINAL_LINES = [
   ['prompt', '🌊 OceanGram v1.0.0 — bioluminescent shell ready'],
@@ -1246,7 +1245,6 @@ function setTargetValidation(message = '') {
 function validateTarget(target) {
   if (!target) return 'Enter a target username.';
   if (!TARGET_USERNAME_RE.test(target)) return 'Invalid username format. Use letters, numbers, dot, underscore (max 30).';
-  if (target.startsWith('.') || target.endsWith('.') || target.includes('..')) return 'Invalid username format for Instagram.';
   return '';
 }
 
@@ -1385,7 +1383,7 @@ function exportTerminal() {
 }
 
 async function runCommand(c, providedTarget = null) {
-  const target = providedTarget || getValidatedTarget();
+  const target = providedTarget ?? getValidatedTarget();
   if (!target) return;
   document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
   const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
@@ -1832,7 +1830,7 @@ const cmdSearchInput = document.getElementById('command-search-input');
 if (cmdSearchInput) {
   cmdSearchInput.addEventListener('input', () => {
     commandSearchText = cmdSearchInput.value || '';
-    renderCards(currentCategory);
+    renderCards();
   });
 }
 const targetInput = document.getElementById('target-input');
