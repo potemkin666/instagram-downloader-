@@ -22,6 +22,11 @@ https://potemkin666.github.io/instagram-downloader-/
 - **Input validation + recent history** — validate Instagram usernames and quickly rerun recent command/target pairs
 - **Terminal utilities** — clear terminal output and export terminal logs to `.txt`
 - **Mermaid media gallery** — includes static and animated mermaid pixel-art panels
+- **Favorites + favorites tab** — star frequently used commands and filter to favorites only
+- **Sortable command grid** — order commands by default, name, category, or most-used
+- **API health indicator** — check backend reachability from the UI with visible status
+- **Retry last command** — instantly rerun your most recent command/target pair
+- **Recent target chips** — switch targets quickly with one-click recall
 - **Filterable command grid** — filter by category tabs
 - **Quick-start code block** — copy the Osintgram install commands in one click
 - **Fully responsive** — works on mobile and desktop

@@ -443,6 +443,7 @@
     .dot-green  { background:var(--glow);      box-shadow:0 0 6px var(--glow); }
     .dot-yellow { background:var(--gold);      box-shadow:0 0 6px var(--gold); }
     .dot-pink   { background:var(--jelly-pink);box-shadow:0 0 6px var(--jelly-pink); }
+    .dot-red    { background:#ff5f57;          box-shadow:0 0 6px #ff5f57; }
 
     /* ── Category filter tabs ────────────────────────────── */
     .category-tabs {
@@ -459,13 +460,14 @@
       margin-bottom: 14px;
     }
     .command-search { min-width: 260px; max-width: 460px; }
+    .command-sort { min-width: 220px; max-width: 280px; }
     .btn-mini {
       padding: 10px 14px;
       border: 2px solid rgba(0,245,212,0.3);
       background: transparent;
       color: var(--foam);
       font-family: var(--pixel-font);
-      font-size: 0.44rem;
+      font-size: 0.6rem;
       cursor: pointer;
       letter-spacing: 1px;
       transition: all var(--transition);
@@ -487,7 +489,7 @@
       background: transparent;
       color: var(--foam);
       font-family: var(--pixel-font);
-      font-size: 0.48rem;
+      font-size: 0.58rem;
       cursor: pointer;
       letter-spacing: 1px;
       transition: all var(--transition);
@@ -541,6 +543,27 @@
       border-color: var(--glow);
       box-shadow: 7px 7px 0 rgba(0,245,212,0.3), 0 0 24px rgba(0,245,212,0.15);
     }
+    .command-card.favorite-card {
+      border-color: rgba(255,215,0,0.65);
+      box-shadow: 7px 7px 0 rgba(255,215,0,0.18), 0 0 22px rgba(255,215,0,0.12);
+    }
+    .fav-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 30px;
+      height: 30px;
+      border: 1px solid rgba(0,245,212,0.35);
+      background: rgba(0,0,0,0.22);
+      color: rgba(255,255,255,0.65);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0;
+      border-radius: 6px;
+    }
+    .fav-btn:hover { color: #ffd700; border-color: #ffd700; }
+    .fav-btn.active { color: #ffd700; border-color: #ffd700; background: rgba(255,215,0,0.12); }
 
     .card-icon {
       font-size: 1.6rem;
@@ -569,6 +592,12 @@
       color: var(--foam);
       line-height: 1.55;
       opacity: 0.85;
+    }
+    .card-usage {
+      margin-top: 10px;
+      font-size: 0.72rem;
+      color: rgba(0,245,212,0.75);
+      font-family: 'Courier New', monospace;
     }
     .cat-Profile    .card-category { color: var(--aqua); }
     .cat-Social     .card-category { color: var(--teal); }
@@ -615,7 +644,7 @@
       background: transparent;
       color: var(--foam);
       font-family: var(--pixel-font);
-      font-size: 0.4rem;
+      font-size: 0.6rem;
       cursor: pointer;
       letter-spacing: 1px;
     }
@@ -663,7 +692,7 @@
     }
     .recent-title {
       font-family: var(--pixel-font);
-      font-size: 0.42rem;
+      font-size: 0.6rem;
       color: var(--teal);
       letter-spacing: 1px;
       margin-bottom: 8px;
@@ -683,6 +712,38 @@
       font-family: 'Courier New', monospace;
     }
     .recent-chip:hover {
+      border-color: var(--glow);
+      color: var(--glow);
+    }
+    .recent-targets-wrap {
+      margin-top: 14px;
+      max-width: 680px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: left;
+    }
+    .recent-targets-title {
+      font-family: var(--pixel-font);
+      font-size: 0.58rem;
+      color: var(--teal);
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .recent-targets-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .target-chip {
+      border: 1px solid rgba(0,245,212,0.3);
+      background: rgba(0,245,212,0.08);
+      color: var(--foam);
+      font-size: 0.75rem;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+    }
+    .target-chip:hover {
       border-color: var(--glow);
       color: var(--glow);
     }
@@ -845,10 +906,21 @@
                autocomplete="off" spellcheck="false"
                aria-label="Backend API URL for live mode"/>
       </div>
+      <div class="commands-toolbar mt-16">
+        <button class="btn-mini" id="api-health-btn" onclick="checkApiHealth()">CHECK API HEALTH</button>
+        <div class="stat-pill" id="api-health-pill"><span class="dot dot-yellow"></span>API status unknown</div>
+      </div>
       <div class="stats-bar">
         <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
         <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Demo mode active</div>
+        <div class="stat-pill" id="run-count-pill"><span class="dot dot-green"></span>0 command runs</div>
         <div class="stat-pill"><span class="dot dot-pink"></span>Public profiles only</div>
+      </div>
+      <div class="recent-targets-wrap">
+        <div class="recent-targets-title">RECENT TARGETS</div>
+        <div id="recent-targets-list" class="recent-targets-list">
+          <div class="t-dim">No recent targets yet.</div>
+        </div>
       </div>
     </div>
   </section>
@@ -863,6 +935,12 @@
       <input id="command-search-input" class="search-input command-search" type="text"
              placeholder="Search commands (name, category, description)"
              autocomplete="off" spellcheck="false" aria-label="Search command cards"/>
+      <select id="command-sort-select" class="search-input command-sort" aria-label="Sort command cards">
+        <option value="default">Sort: Default</option>
+        <option value="name">Sort: Name (A-Z)</option>
+        <option value="category">Sort: Category</option>
+        <option value="used">Sort: Most used</option>
+      </select>
       <button class="btn-mini" id="run-all-btn" onclick="runAllVisibleCommands()">▶ RUN VISIBLE</button>
       <div class="stat-pill" id="visible-count-pill"><span class="dot dot-green"></span>0 visible</div>
     </div>
@@ -873,6 +951,7 @@
       <button class="tab-btn" data-cat="Content"     onclick="filterCards(this)" role="tab">CONTENT</button>
       <button class="tab-btn" data-cat="Engagement"  onclick="filterCards(this)" role="tab">ENGAGEMENT</button>
       <button class="tab-btn" data-cat="Contact"     onclick="filterCards(this)" role="tab">CONTACT</button>
+      <button class="tab-btn" data-cat="favorites"   onclick="filterCards(this)" role="tab">FAVORITES</button>
     </div>
     <div class="commands-grid" id="commands-grid"></div>
   </section>
@@ -890,6 +969,7 @@
         <span class="tb-dot tb-green"></span>
         <span class="tb-title">oceangram@osint — bioluminescent shell</span>
         <div class="terminal-tools">
+          <button class="btn-top" onclick="retryLastCommand()">RETRY</button>
           <button class="btn-top" onclick="clearTerminal()">CLEAR</button>
           <button class="btn-top" onclick="exportTerminal()">EXPORT</button>
         </div>
@@ -1093,19 +1173,31 @@ function renderCards() {
   grid.innerHTML = '';
   const visible = getVisibleCommands();
   visible.forEach(c => {
+    const isFavorite = favoriteCommandIds.has(c.id);
+    const runCount = commandRunCounts[c.id] || 0;
     const div = document.createElement('div');
-    div.className = `command-card cat-${c.cat}`;
+    div.className = `command-card cat-${c.cat}${isFavorite ? ' favorite-card' : ''}`;
     div.dataset.id = c.id;
     div.setAttribute('role','button');
     div.setAttribute('tabindex','0');
     div.setAttribute('aria-label',`Run ${c.name} command`);
     div.innerHTML = `
+      <button class="fav-btn ${isFavorite ? 'active' : ''}" aria-label="Toggle favorite for ${c.name}" title="Toggle favorite">${isFavorite ? '★' : '☆'}</button>
       <span class="card-icon">${c.icon}</span>
       <div class="card-category">${c.cat.toUpperCase()}</div>
       <div class="card-name">${c.name}</div>
-      <div class="card-desc">${c.desc}</div>`;
+      <div class="card-desc">${c.desc}</div>
+      <div class="card-usage">Runs: ${runCount}</div>`;
     div.addEventListener('click', () => runCommand(c));
-    div.addEventListener('keydown', (e) => { if (e.key==='Enter'||e.key===' ') runCommand(c); });
+    div.addEventListener('keydown', (e) => {
+      if (e.target && e.target.classList && e.target.classList.contains('fav-btn')) return;
+      if (e.key==='Enter'||e.key===' ') runCommand(c);
+    });
+    const fav = div.querySelector('.fav-btn');
+    if (fav) {
+      fav.addEventListener('click', (e) => toggleFavorite(c.id, e));
+      fav.addEventListener('keydown', (e) => e.stopPropagation());
+    }
     grid.appendChild(div);
   });
   if (!visible.length) {
@@ -1129,11 +1221,15 @@ function filterCards(btn) {
 ═══════════════════════════════════════════════════════════ */
 let _typing = false;
 const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
+const FAVORITES_STORAGE_KEY = 'oceangramFavoriteCommands';
+const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
+const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
 const API_TIMEOUT_MS = 15000;
 const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
+const MAX_RECENT_TARGETS = 8;
 const INITIAL_TERMINAL_LINES = [
   ['prompt', '🌊 OceanGram v1.0.0 — bioluminescent shell ready'],
   ['dim', '════════════════════════════════════════════════'],
@@ -1141,7 +1237,12 @@ const INITIAL_TERMINAL_LINES = [
 ];
 let currentCategory = 'all';
 let commandSearchText = '';
+let sortMode = 'default';
 let recentCommands = [];
+let recentTargets = [];
+let favoriteCommandIds = new Set();
+let commandRunCounts = {};
+let lastRunContext = null;
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1208,6 +1309,43 @@ function persistApiBaseUrl(value) {
     if (value) localStorage.setItem(API_URL_STORAGE_KEY, value);
     else localStorage.removeItem(API_URL_STORAGE_KEY);
   } catch (_) {}
+}
+
+function readStoredJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function persistJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (_) {}
+}
+
+function initStoredState() {
+  const favoriteIds = readStoredJson(FAVORITES_STORAGE_KEY, []);
+  favoriteCommandIds = new Set(Array.isArray(favoriteIds) ? favoriteIds : []);
+  const counts = readStoredJson(RUN_COUNT_STORAGE_KEY, {});
+  commandRunCounts = counts && typeof counts === 'object' ? counts : {};
+  const targets = readStoredJson(RECENT_TARGETS_STORAGE_KEY, []);
+  recentTargets = Array.isArray(targets) ? targets.slice(0, MAX_RECENT_TARGETS) : [];
+}
+
+function persistFavorites() {
+  persistJson(FAVORITES_STORAGE_KEY, Array.from(favoriteCommandIds));
+}
+
+function persistRunCounts() {
+  persistJson(RUN_COUNT_STORAGE_KEY, commandRunCounts);
+}
+
+function persistRecentTargets() {
+  persistJson(RECENT_TARGETS_STORAGE_KEY, recentTargets);
 }
 
 function parseLiveOutputLines(data) {
@@ -1298,18 +1436,50 @@ function selectCommandLines(liveLines, demoLines) {
 
 function getVisibleCommands() {
   const q = commandSearchText.trim().toLowerCase();
-  return COMMANDS.filter(c => {
-    if (currentCategory !== 'all' && c.cat !== currentCategory) return false;
+  const filtered = COMMANDS.filter(c => {
+    if (currentCategory === 'favorites' && !favoriteCommandIds.has(c.id)) return false;
+    if (currentCategory !== 'all' && currentCategory !== 'favorites' && c.cat !== currentCategory) return false;
     if (!q) return true;
     const haystack = `${c.name} ${c.cat} ${c.desc}`.toLowerCase();
     return haystack.includes(q);
   });
+  return sortCommands(filtered);
+}
+
+function sortCommands(list) {
+  const sorted = [...list];
+  if (sortMode === 'name') {
+    sorted.sort((a, b) => a.name.localeCompare(b.name));
+  } else if (sortMode === 'category') {
+    sorted.sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
+  } else if (sortMode === 'used') {
+    sorted.sort((a, b) => (commandRunCounts[b.id] || 0) - (commandRunCounts[a.id] || 0) || a.name.localeCompare(b.name));
+  }
+  return sorted;
+}
+
+function toggleFavorite(commandId, evt) {
+  if (evt) {
+    evt.preventDefault();
+    evt.stopPropagation();
+  }
+  if (favoriteCommandIds.has(commandId)) favoriteCommandIds.delete(commandId);
+  else favoriteCommandIds.add(commandId);
+  persistFavorites();
+  renderCards();
 }
 
 function updateVisibleCount(count) {
   const pill = document.getElementById('visible-count-pill');
   if (!pill) return;
   pill.innerHTML = `<span class="dot dot-green"></span>${count} visible`;
+}
+
+function updateRunCountPill() {
+  const pill = document.getElementById('run-count-pill');
+  if (!pill) return;
+  const totalRuns = Object.values(commandRunCounts).reduce((sum, n) => sum + (Number(n) || 0), 0);
+  pill.innerHTML = `<span class="dot dot-green"></span>${totalRuns} command runs`;
 }
 
 function addRecentCommand(commandId, target) {
@@ -1344,6 +1514,71 @@ async function rerunRecent(index) {
   const tInput = document.getElementById('target-input');
   if (tInput) tInput.value = item.target;
   await runCommand(cmd, item.target);
+}
+
+function addRecentTarget(target) {
+  if (!target) return;
+  recentTargets = [target, ...recentTargets.filter(t => t !== target)].slice(0, MAX_RECENT_TARGETS);
+  persistRecentTargets();
+  renderRecentTargets();
+}
+
+function renderRecentTargets() {
+  const host = document.getElementById('recent-targets-list');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!recentTargets.length) {
+    host.innerHTML = '<div class="t-dim">No recent targets yet.</div>';
+    return;
+  }
+  recentTargets.forEach(target => {
+    const chip = document.createElement('button');
+    chip.className = 'target-chip';
+    chip.textContent = `@${target}`;
+    chip.addEventListener('click', () => {
+      const input = document.getElementById('target-input');
+      if (input) input.value = target;
+      setTargetValidation('');
+    });
+    host.appendChild(chip);
+  });
+}
+
+function registerCommandRun(command, target) {
+  commandRunCounts[command.id] = (commandRunCounts[command.id] || 0) + 1;
+  persistRunCounts();
+  lastRunContext = { commandId: command.id, target };
+  updateRunCountPill();
+}
+
+function setApiHealthPill(status, text) {
+  const pill = document.getElementById('api-health-pill');
+  if (!pill) return;
+  if (status === 'ok') pill.innerHTML = `<span class="dot dot-green"></span>${text}`;
+  else if (status === 'warn') pill.innerHTML = `<span class="dot dot-yellow"></span>${text}`;
+  else pill.innerHTML = `<span class="dot dot-red"></span>${text}`;
+}
+
+async function checkApiHealth() {
+  const base = getApiBaseUrl();
+  if (!base) {
+    setApiHealthPill('warn', 'Set backend URL first');
+    return;
+  }
+  const btn = document.getElementById('api-health-btn');
+  if (btn) btn.disabled = true;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${base}/api/health`, { method: 'GET', signal: controller.signal });
+    if (res.ok) setApiHealthPill('ok', 'API reachable');
+    else setApiHealthPill('warn', `API responded ${res.status}`);
+  } catch (_) {
+    setApiHealthPill('error', 'API unreachable');
+  } finally {
+    clearTimeout(timeoutId);
+    if (btn) btn.disabled = false;
+  }
 }
 
 function resetTerminal() {
@@ -1383,6 +1618,21 @@ function exportTerminal() {
   URL.revokeObjectURL(url);
 }
 
+async function retryLastCommand() {
+  if (!lastRunContext) {
+    setTargetValidation('No previous command to retry yet.');
+    return;
+  }
+  const cmd = COMMANDS.find(c => c.id === lastRunContext.commandId);
+  if (!cmd) {
+    setTargetValidation('Last command is no longer available.');
+    return;
+  }
+  const tInput = document.getElementById('target-input');
+  if (tInput) tInput.value = lastRunContext.target;
+  await runCommand(cmd, lastRunContext.target);
+}
+
 async function runCommand(c, providedTarget = null) {
   const target = providedTarget ?? getValidatedTarget();
   if (!target) return;
@@ -1392,14 +1642,18 @@ async function runCommand(c, providedTarget = null) {
   const liveLines = await fetchLiveLines(target, c.name);
   const demoLines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
   const lines = selectCommandLines(liveLines, demoLines);
+  registerCommandRun(c, target);
+  addRecentTarget(target);
   addRecentCommand(c.id, target);
   await animateOutput(lines);
+  renderCards();
   document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 function startScan() {
   const target = getValidatedTarget();
   if (!target) return;
+  addRecentTarget(target);
   const btn = document.getElementById('dive-btn');
   btn.classList.add('loading');
   setTimeout(() => {
@@ -1825,6 +2079,7 @@ if (apiInput) {
     apiInput.value = normalized;
     persistApiBaseUrl(normalized);
     setLiveModePill();
+    setApiHealthPill('warn', normalized ? 'API status unknown' : 'Set backend URL first');
   });
 }
 const cmdSearchInput = document.getElementById('command-search-input');
@@ -1834,14 +2089,25 @@ if (cmdSearchInput) {
     renderCards();
   });
 }
+const cmdSortSelect = document.getElementById('command-sort-select');
+if (cmdSortSelect) {
+  cmdSortSelect.addEventListener('change', () => {
+    sortMode = cmdSortSelect.value || 'default';
+    renderCards();
+  });
+}
 const targetInput = document.getElementById('target-input');
 if (targetInput) {
   targetInput.addEventListener('input', () => {
     if (!targetInput.value.trim()) setTargetValidation('');
   });
 }
+initStoredState();
 setLiveModePill();
+setApiHealthPill('warn', getApiBaseUrl() ? 'API status unknown' : 'Set backend URL first');
+renderRecentTargets();
 renderRecentCommands();
+updateRunCountPill();
 resetTerminal();
 renderCards();
 </script>
