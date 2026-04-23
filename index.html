@@ -940,7 +940,8 @@
         <option value="category">Sort: Category</option>
         <option value="used">Sort: Most used</option>
       </select>
-      <button class="btn-mini" id="run-all-btn" onclick="runAllVisibleCommands()">▶ RUN VISIBLE</button>
+      <button class="btn-mini" id="run-first-btn" onclick="runFirstVisibleCommand()">RUN FIRST</button>
+      <button class="btn-mini" id="run-all-btn" onclick="runAllVisibleCommands()">RUN VISIBLE</button>
       <div class="stat-pill" id="visible-count-pill"><span class="dot dot-green"></span>0 visible</div>
     </div>
     <div class="category-tabs" id="cat-tabs" role="tablist">
@@ -1126,9 +1127,9 @@ function renderCards() {
 }
 
 function filterCards(btn) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentCategory = btn.dataset.cat;
+  const category = btn && btn.dataset ? btn.dataset.cat : 'all';
+  setActiveCategory(category);
+  persistCommandUiState();
   renderCards();
 }
 
@@ -1141,11 +1142,14 @@ const FAVORITES_STORAGE_KEY = 'oceangramFavoriteCommands';
 const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
 const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
 const RECENT_COMMANDS_STORAGE_KEY = 'oceangramRecentCommands';
+const COMMAND_UI_STATE_STORAGE_KEY = 'oceangramCommandUiState';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
+const API_HEALTH_DEBOUNCE_MS = 700;
 const RUN_ALL_LABEL_DEFAULT = 'RUN VISIBLE';
 const RUN_ALL_LABEL_STOP = 'STOP';
+const COMMAND_CATEGORIES = new Set(['all', 'Profile', 'Social', 'Content', 'Engagement', 'Contact', 'favorites']);
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
@@ -1166,6 +1170,7 @@ let lastRunContext = null;
 let commandInFlight = false;
 let runAllInProgress = false;
 let cancelRunAll = false;
+let apiHealthDebounceId = null;
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1216,10 +1221,15 @@ function getApiBaseUrl() {
 function setLiveModePill() {
   const pill = document.getElementById('live-mode-pill');
   if (!pill) return;
-  const live = !!getApiBaseUrl();
-  pill.innerHTML = live
-    ? '<span class="dot dot-green"></span>Live mode active'
-    : '<span class="dot dot-yellow"></span>Backend URL required';
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
+    pill.innerHTML = base
+      ? '<span class="dot dot-yellow"></span>Backend URL invalid'
+      : '<span class="dot dot-yellow"></span>Backend URL required';
+    return;
+  }
+  pill.innerHTML = '<span class="dot dot-green"></span>Live mode active';
 }
 
 function readStoredApiBaseUrl() {
@@ -1281,6 +1291,60 @@ function persistRecentCommands() {
   persistJson(RECENT_COMMANDS_STORAGE_KEY, recentCommands);
 }
 
+function persistCommandUiState() {
+  persistJson(COMMAND_UI_STATE_STORAGE_KEY, {
+    category: currentCategory,
+    search: commandSearchText,
+    sort: sortMode,
+  });
+}
+
+function readStoredCommandUiState() {
+  const state = readStoredJson(COMMAND_UI_STATE_STORAGE_KEY, {});
+  if (!state || typeof state !== 'object') return { category: 'all', search: '', sort: 'default' };
+  return {
+    category: COMMAND_CATEGORIES.has(state.category) ? state.category : 'all',
+    search: typeof state.search === 'string' ? state.search : '',
+    sort: ['default', 'name', 'category', 'used'].includes(state.sort) ? state.sort : 'default',
+  };
+}
+
+function setActiveCategory(category) {
+  const nextCategory = COMMAND_CATEGORIES.has(category) ? category : 'all';
+  currentCategory = nextCategory;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.cat === nextCategory);
+  });
+}
+
+function validateApiBaseUrl(base) {
+  if (!base) return 'Set backend URL first';
+  try {
+    const parsed = new URL(base);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return 'Use http:// or https:// backend URL';
+  } catch (_) {
+    return 'Invalid backend URL format';
+  }
+  return '';
+}
+
+function scheduleApiHealthCheck() {
+  if (apiHealthDebounceId) {
+    clearTimeout(apiHealthDebounceId);
+    apiHealthDebounceId = null;
+  }
+  const base = getApiBaseUrl();
+  const err = validateApiBaseUrl(base);
+  if (err) {
+    setApiHealthPill('warn', err);
+    return;
+  }
+  setApiHealthPill('warn', 'Checking API...');
+  apiHealthDebounceId = setTimeout(() => {
+    checkApiHealth();
+  }, API_HEALTH_DEBOUNCE_MS);
+}
+
 function parseLiveOutputLines(data) {
   if (Array.isArray(data?.lines) && data.lines.every(l =>
     Array.isArray(l)
@@ -1330,12 +1394,13 @@ function getValidatedTarget() {
 
 async function fetchLiveLines(target, cmd) {
   const base = getApiBaseUrl();
-  if (!base) {
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
-      ['warn', '[!] No backend API URL configured'],
-      ['info', '  Set Backend API URL, then run the command again.'],
+      ['warn', `[!] ${baseErr}`],
+      ['info', '  Update Backend API URL, then run the command again.'],
     ];
   }
   const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
@@ -1516,8 +1581,9 @@ function setApiHealthPill(status, text) {
 
 async function checkApiHealth() {
   const base = getApiBaseUrl();
-  if (!base) {
-    setApiHealthPill('warn', 'Set backend URL first');
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
+    setApiHealthPill('warn', baseErr);
     return;
   }
   const btn = document.getElementById('api-health-btn');
@@ -1592,6 +1658,17 @@ async function retryLastCommand() {
   await runCommand(cmd, lastRunContext.target);
 }
 
+async function runFirstVisibleCommand() {
+  const target = getValidatedTarget();
+  if (!target) return;
+  const visible = getVisibleCommands();
+  if (!visible.length) {
+    setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
+    return;
+  }
+  await runCommand(visible[0], target);
+}
+
 function setRunAllButtonState(running) {
   const btn = document.getElementById('run-all-btn');
   if (!btn) return;
@@ -1613,6 +1690,8 @@ function setCommandBusyState(isBusy) {
   if (retryBtn) retryBtn.disabled = isBusy;
   const apiHealthBtn = document.getElementById('api-health-btn');
   if (apiHealthBtn) apiHealthBtn.disabled = isBusy;
+  const runFirstBtn = document.getElementById('run-first-btn');
+  if (runFirstBtn) runFirstBtn.disabled = isBusy;
   const runAllBtn = document.getElementById('run-all-btn');
   if (runAllBtn && !runAllInProgress) runAllBtn.disabled = isBusy;
 }
@@ -2084,13 +2163,24 @@ if (apiInput) {
     apiInput.value = normalized;
     persistApiBaseUrl(normalized);
     setLiveModePill();
-    setApiHealthPill('warn', normalized ? 'API status unknown' : 'Set backend URL first');
+    scheduleApiHealthCheck();
+  });
+  apiInput.addEventListener('input', () => {
+    persistApiBaseUrl(getApiBaseUrl());
+    setLiveModePill();
+    scheduleApiHealthCheck();
   });
 }
 const cmdSearchInput = document.getElementById('command-search-input');
 if (cmdSearchInput) {
+  cmdSearchInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    runFirstVisibleCommand();
+  });
   cmdSearchInput.addEventListener('input', () => {
     commandSearchText = cmdSearchInput.value || '';
+    persistCommandUiState();
     renderCards();
   });
 }
@@ -2098,6 +2188,7 @@ const cmdSortSelect = document.getElementById('command-sort-select');
 if (cmdSortSelect) {
   cmdSortSelect.addEventListener('change', () => {
     sortMode = cmdSortSelect.value || 'default';
+    persistCommandUiState();
     renderCards();
   });
 }
@@ -2132,8 +2223,15 @@ document.addEventListener('keydown', (e) => {
   }
 });
 initStoredState();
+const commandUiState = readStoredCommandUiState();
+setActiveCategory(commandUiState.category);
+commandSearchText = commandUiState.search;
+sortMode = commandUiState.sort;
+if (cmdSearchInput) cmdSearchInput.value = commandSearchText;
+if (cmdSortSelect) cmdSortSelect.value = sortMode;
 setLiveModePill();
-setApiHealthPill('warn', getApiBaseUrl() ? 'API status unknown' : 'Set backend URL first');
+const initialApiErr = validateApiBaseUrl(getApiBaseUrl());
+setApiHealthPill('warn', initialApiErr || 'API status unknown');
 renderRecentTargets();
 renderRecentCommands();
 updateRunCountPill();

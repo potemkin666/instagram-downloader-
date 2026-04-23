@@ -26,6 +26,9 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Overlap-safe command execution** — prevents concurrent command runs from colliding
 - **Stoppable batch runner** — `RUN VISIBLE` toggles to `STOP` while batch execution is active
 - **Keyboard shortcuts** — `Ctrl/Cmd+Enter` run visible, `Ctrl/Cmd+K` focus search, `Esc` clear validation
+- **Persistent command view state** — remembers active category, command search query, and sort mode across reloads
+- **Safer backend URL handling** — validates backend URL format/protocol and automatically re-checks API health after edits
+- **Quick-run first match** — run the first currently visible command instantly via `RUN FIRST` or `Enter` in command search
 - **Favorites + favorites tab** — star frequently used commands and filter to favorites only
 - **Sortable command grid** — order commands by default, name, category, or most-used
 - **API health indicator** — check backend reachability from the UI with visible status
