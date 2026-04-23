@@ -1227,6 +1227,7 @@ const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
 const API_TIMEOUT_MS = 15000;
+// 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
 const MAX_RECENT_TARGETS = 8;
@@ -1610,12 +1611,16 @@ function exportTerminal() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const stamp = new Date().toISOString().replace(/[:]/g, '-').replace(/\..+$/, '');
+  const stamp = formatTimestampForFilename();
   a.download = `oceangram-terminal-${stamp}.txt`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function formatTimestampForFilename() {
+  return new Date().toISOString().replace(/[:]/g, '-').replace(/\..+$/, '');
 }
 
 async function retryLastCommand() {
@@ -1683,7 +1688,7 @@ async function runAllVisibleCommands() {
   if (btn) btn.disabled = true;
   try {
     for (const c of visible) {
-      // sequential to preserve terminal readability
+      // Sequential to preserve terminal readability.
       await runCommand(c, target);
     }
   } finally {
