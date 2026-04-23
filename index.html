@@ -708,9 +708,15 @@
           </button>
         </div>
       </div>
+      <div class="mt-16">
+        <input id="api-url-input" class="search-input" type="url"
+               placeholder="https://your-osint-backend.example.com (optional)"
+               autocomplete="off" spellcheck="false"
+               aria-label="Backend API URL for live mode"/>
+      </div>
       <div class="stats-bar">
         <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
-        <div class="stat-pill"><span class="dot dot-yellow"></span>Demo mode active</div>
+        <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Demo mode active</div>
         <div class="stat-pill"><span class="dot dot-pink"></span>Public profiles only</div>
       </div>
     </div>
@@ -967,6 +973,7 @@ function filterCards(btn) {
    TERMINAL
 ═══════════════════════════════════════════════════════════ */
 let _typing = false;
+const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1007,12 +1014,74 @@ function getTarget() {
   return (document.getElementById('target-input').value.trim().replace(/^@/,'') || 'unknown_user');
 }
 
-function runCommand(c) {
+function getApiBaseUrl() {
+  const input = document.getElementById('api-url-input');
+  const raw = input ? input.value.trim() : '';
+  if (!raw) return '';
+  return raw.replace(/\/+$/, '');
+}
+
+function setLiveModePill() {
+  const pill = document.getElementById('live-mode-pill');
+  if (!pill) return;
+  const live = !!getApiBaseUrl();
+  pill.innerHTML = live
+    ? '<span class="dot dot-green"></span>Live mode active'
+    : '<span class="dot dot-yellow"></span>Demo mode active';
+}
+
+function readStoredApiBaseUrl() {
+  try { return localStorage.getItem(API_URL_STORAGE_KEY) || ''; }
+  catch (_) { return ''; }
+}
+
+function persistApiBaseUrl(value) {
+  try {
+    if (value) localStorage.setItem(API_URL_STORAGE_KEY, value);
+    else localStorage.removeItem(API_URL_STORAGE_KEY);
+  } catch (_) {}
+}
+
+async function fetchLiveLines(target, cmd) {
+  const base = getApiBaseUrl();
+  if (!base) return null;
+  const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
+  try {
+    const res = await fetch(url, { method: 'GET' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data?.lines) && data.lines.every(l => Array.isArray(l) && l.length === 2)) {
+      return data.lines;
+    }
+    const out = Array.isArray(data?.output) ? data.output : String(data?.output || data?.result || '').split('\n');
+    const payload = out.map(s => ['result', String(s)]).filter(([, s]) => s.trim().length);
+    return [
+      ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+      ['dim', '════════════════════════════════════════════════'],
+      ['label', `[ ${cmd} — live ]`],
+      ...payload,
+      ['success', '[✔] Live command completed'],
+    ];
+  } catch (err) {
+    return [
+      ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+      ['dim', '════════════════════════════════════════════════'],
+      ['warn', `[!] Live request failed: ${err.message}`],
+      ['info', '  Falling back to demo output.'],
+    ];
+  }
+}
+
+async function runCommand(c) {
   const target = getTarget();
   document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
   const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
   if (el) el.classList.add('active-card');
-  const lines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
+  const liveLines = await fetchLiveLines(target, c.name);
+  const demoLines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
+  const lines = liveLines && liveLines.some(([type]) => type === 'result' || type === 'success')
+    ? liveLines
+    : (liveLines ? [...liveLines, ...demoLines] : demoLines);
   animateOutput(lines);
   document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
@@ -1416,6 +1485,17 @@ function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 /* ═══════════════════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════════════════ */
+const apiInput = document.getElementById('api-url-input');
+if (apiInput) {
+  apiInput.value = readStoredApiBaseUrl();
+  apiInput.addEventListener('change', () => {
+    const normalized = getApiBaseUrl();
+    apiInput.value = normalized;
+    persistApiBaseUrl(normalized);
+    setLiveModePill();
+  });
+}
+setLiveModePill();
 renderCards();
 </script>
 </body>
