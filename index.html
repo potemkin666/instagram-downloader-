@@ -1066,25 +1066,40 @@ function persistApiBaseUrl(value) {
   } catch (_) {}
 }
 
+function parseLiveOutputLines(data) {
+  if (Array.isArray(data?.lines) && data.lines.every(l =>
+    Array.isArray(l)
+    && l.length === 2
+    && typeof l[0] === 'string'
+    && LIVE_LINE_TYPES.has(l[0])
+    && typeof l[1] === 'string'
+  )) {
+    return data.lines;
+  }
+
+  let rawOutput = data?.output;
+  if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') {
+    rawOutput = data?.result;
+  }
+  if (typeof rawOutput === 'undefined' || rawOutput === null) {
+    rawOutput = '';
+  }
+
+  const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
+  return normalized.map(s => ['result', String(s).length ? String(s) : ' ']);
+}
+
 async function fetchLiveLines(target, cmd) {
   const base = getApiBaseUrl();
   if (!base) return null;
   const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {
-    const res = await fetch(url, { method: 'GET' });
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (Array.isArray(data?.lines) && data.lines.every(l =>
-      Array.isArray(l)
-      && l.length === 2
-      && typeof l[0] === 'string'
-      && LIVE_LINE_TYPES.has(l[0])
-      && typeof l[1] === 'string'
-    )) {
-      return data.lines;
-    }
-    const out = Array.isArray(data?.output) ? data.output : String(data?.output || data?.result || '').split('\n');
-    const payload = out.map(s => ['result', String(s)]).filter(([, s]) => s.trim().length);
+    const payload = parseLiveOutputLines(data);
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
@@ -1093,12 +1108,15 @@ async function fetchLiveLines(target, cmd) {
       ['success', '[✔] Live command completed'],
     ];
   } catch (err) {
+    const msg = err?.name === 'AbortError' ? 'request timed out' : err.message;
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
-      ['warn', `[!] Live request failed: ${err.message}`],
+      ['warn', `[!] Live request failed: ${msg}`],
       ['info', '  Falling back to demo output.'],
     ];
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
