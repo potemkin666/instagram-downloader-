@@ -17,6 +17,7 @@ https://potemkin666.github.io/instagram-downloader-/
 - **Ocean-themed UI** — deep-sea gradient, animated bubbles, shimmering particle canvas, and SVG waves
 - **20 OSINT command cards** — organised by category (Profile, Social, Content, Engagement, Contact)
 - **Interactive terminal panel** — click any card to see simulated command output with typewriter animation
+- **Optional live mode** — set a backend API URL in the UI to fetch real command results
 - **Filterable command grid** — filter by category tabs
 - **Quick-start code block** — copy the Osintgram install commands in one click
 - **Fully responsive** — works on mobile and desktop
@@ -41,6 +42,28 @@ pip install -r requirements.txt
 make setup
 python3 main.py <target_username>
 ```
+
+## 🔌 Live API integration
+
+To run commands against a real backend from the UI:
+
+1. Start your backend service (for example, a wrapper around Osintgram).
+2. In OceanGram, paste the backend base URL into the **Backend API URL** field.
+3. Click any command card.
+
+OceanGram calls:
+
+```
+GET <backend-base-url>/api/command?target=<username>&command=<command>
+```
+
+Supported response formats:
+
+- `{ "lines": [["prompt","..."], ["result","..."], ["success","..."]] }`
+- `{ "output": "line 1\nline 2\nline 3" }`
+- `{ "output": ["line 1", "line 2"] }`
+
+If no backend URL is set, or the live request fails, the UI falls back to demo output.
 
 ## ⚠️ Disclaimer
 
