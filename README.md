@@ -2,7 +2,7 @@
 
 An ocean-themed GitHub Pages UI for Instagram OSINT reconnaissance, inspired by [Osintgram](https://github.com/Datalux/Osintgram).
 
-## 🌐 Live UI
+## 🌐 GitHub Pages Deployment
 
 GitHub Pages is enabled for this repository.
 

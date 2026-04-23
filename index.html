@@ -1144,8 +1144,8 @@ const RECENT_COMMANDS_STORAGE_KEY = 'oceangramRecentCommands';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
-const RUN_ALL_LABEL_DEFAULT = '▶ RUN VISIBLE';
-const RUN_ALL_LABEL_STOP = '■ STOP';
+const RUN_ALL_LABEL_DEFAULT = 'RUN VISIBLE';
+const RUN_ALL_LABEL_STOP = 'STOP';
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
@@ -2110,6 +2110,10 @@ if (targetInput) {
 document.addEventListener('keydown', (e) => {
   const key = (e.key || '').toLowerCase();
   const withMeta = e.ctrlKey || e.metaKey;
+  const target = e.target;
+  const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+  const isEditable = !!(target && (target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select'));
+  if (isEditable && !(withMeta && key === 'k') && key !== 'escape') return;
   if (withMeta && key === 'enter') {
     e.preventDefault();
     runAllVisibleCommands();
