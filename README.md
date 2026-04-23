@@ -4,10 +4,12 @@ An ocean-themed GitHub Pages UI for Instagram OSINT reconnaissance, inspired by 
 
 ## 🌐 Live Demo
 
-Enable **GitHub Pages** (Settings → Pages → Branch: `main`, Folder: `/root`) and visit:
+GitHub Pages is enabled for this repository.
+
+Use **Settings → Pages** with **Branch: `main`** and **Folder: `/ (root)`**, then visit:
 
 ```
-https://<your-username>.github.io/instagram-downloader-/
+https://potemkin666.github.io/instagram-downloader-/
 ```
 
 ## ✨ Features
