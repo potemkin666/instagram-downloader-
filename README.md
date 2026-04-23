@@ -71,7 +71,9 @@ Supported response formats:
 - `{ "output": "line 1\nline 2\nline 3" }`
 - `{ "output": ["line 1", "line 2"] }`
 
-If no backend URL is set, or the live request fails, the UI shows an explicit error and does not use fallback output.
+If no backend URL is set, the terminal shows `[!] No backend API URL configured`.
+If the backend request fails, the terminal shows `[!] Live request failed: ...`.
+No fallback output is used in either case.
 
 ## ⚠️ Disclaimer
 

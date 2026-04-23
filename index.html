@@ -1239,9 +1239,7 @@ function parseLiveOutputLines(data) {
   if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') {
     rawOutput = data?.result;
   }
-  if (typeof rawOutput === 'undefined' || rawOutput === null) {
-    rawOutput = '';
-  }
+  if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') return [];
 
   const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
   return normalized.map(s => {
@@ -1291,6 +1289,14 @@ async function fetchLiveLines(target, cmd) {
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
     const data = await res.json();
     const payload = parseLiveOutputLines(data);
+    const hasMeaningfulPayload = payload.some(([, text]) => String(text || '').trim().length > 0);
+    if (!hasMeaningfulPayload) {
+      return [
+        ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+        ['dim', '════════════════════════════════════════════════'],
+        ['warn', '[!] Live backend returned no output'],
+      ];
+    }
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
