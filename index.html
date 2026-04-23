@@ -258,6 +258,15 @@
       image-rendering: pixelated;
       box-shadow: 0 0 24px rgba(0,212,184,0.25);
     }
+    .mermaid-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .mermaid-gif {
+      image-rendering: auto;
+    }
 
     /* ── Section headings ────────────────────────────────── */
     .section-title {
@@ -348,6 +357,16 @@
       border-color: var(--glow);
       box-shadow: 0 0 0 2px rgba(0,245,212,0.12), 0 0 20px rgba(0,245,212,0.1);
     }
+    .validation-msg {
+      margin-top: 12px;
+      min-height: 20px;
+      font-size: 0.82rem;
+      color: var(--gold);
+      text-align: left;
+      max-width: 540px;
+      margin-left: auto;
+      margin-right: auto;
+    }
 
     /* Pixel-art style button */
     .btn-dive {
@@ -431,6 +450,36 @@
       gap: 8px;
       flex-wrap: wrap;
       margin-bottom: 24px;
+    }
+    .commands-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .command-search { min-width: 260px; max-width: 460px; }
+    .btn-mini {
+      padding: 10px 14px;
+      border: 2px solid rgba(0,245,212,0.3);
+      background: transparent;
+      color: var(--foam);
+      font-family: var(--pixel-font);
+      font-size: 0.44rem;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all var(--transition);
+      box-shadow: 3px 3px 0 rgba(0,245,212,0.1);
+    }
+    .btn-mini:hover {
+      border-color: var(--glow);
+      color: var(--glow);
+      background: rgba(0,245,212,0.08);
+      box-shadow: 3px 3px 0 rgba(0,245,212,0.25);
+    }
+    .btn-mini:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
     .tab-btn {
       padding: 8px 16px;
@@ -556,6 +605,25 @@
       letter-spacing: 2px;
       text-shadow: 0 0 8px rgba(0,245,212,0.5);
     }
+    .terminal-tools {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-top {
+      padding: 5px 9px;
+      border: 2px solid rgba(0,245,212,0.24);
+      background: transparent;
+      color: var(--foam);
+      font-family: var(--pixel-font);
+      font-size: 0.4rem;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+    .btn-top:hover {
+      border-color: var(--glow);
+      color: var(--glow);
+      box-shadow: 0 0 10px rgba(0,245,212,0.12);
+    }
 
     .terminal-body {
       padding: 20px 24px;
@@ -587,6 +655,37 @@
       box-shadow:0 0 8px var(--glow);
     }
     @keyframes blink { 50%{opacity:0;} }
+    .recent-wrap {
+      margin-top: 12px;
+      background: rgba(2,4,14,0.75);
+      border: 1px solid rgba(0,245,212,0.18);
+      padding: 10px 12px;
+    }
+    .recent-title {
+      font-family: var(--pixel-font);
+      font-size: 0.42rem;
+      color: var(--teal);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .recent-list {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .recent-chip {
+      border: 1px solid rgba(0,245,212,0.3);
+      background: rgba(0,245,212,0.08);
+      color: var(--foam);
+      font-size: 0.72rem;
+      padding: 5px 8px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+    }
+    .recent-chip:hover {
+      border-color: var(--glow);
+      color: var(--glow);
+    }
 
     /* ── How-to section ─────────────────────────────────── */
     .how-grid {
@@ -672,6 +771,8 @@
       .search-card { padding:24px 16px; }
       .terminal-body { max-height:320px; }
       .logo { font-size:1rem; }
+      .commands-toolbar { flex-direction: column; align-items: stretch; }
+      .command-search { max-width: none; min-width: 0; }
     }
   </style>
 </head>
@@ -709,9 +810,15 @@
 <main class="container">
 
   <section aria-label="Pixel art mermaid">
-    <div class="mermaid-panel">
-      <img src="https://github.com/user-attachments/assets/6555ed2c-7c52-4557-88be-3516d710bb88"
-           alt="Pixel-art underwater mermaid scene in a bioluminescent cave"/>
+    <div class="mermaid-gallery">
+      <div class="mermaid-panel">
+        <img src="https://github.com/user-attachments/assets/6555ed2c-7c52-4557-88be-3516d710bb88"
+             alt="Pixel-art underwater mermaid scene in a bioluminescent cave"/>
+      </div>
+      <div class="mermaid-panel">
+        <img class="mermaid-gif" src="https://github.com/user-attachments/assets/5e8cdc06-34e5-40d2-ad91-df05bfa54418"
+             alt="Animated mermaid pixel-art underwater GIF"/>
+      </div>
     </div>
   </section>
 
@@ -731,6 +838,7 @@
           </button>
         </div>
       </div>
+      <div id="target-validation" class="validation-msg" aria-live="polite"></div>
       <div class="mt-16">
         <input id="api-url-input" class="search-input" type="url"
                placeholder="https://your-osint-backend.example.com (optional)"
@@ -751,6 +859,13 @@
   <section aria-label="OSINT commands">
     <h2 class="section-title">🧰 OSINT COMMANDS</h2>
     <p class="section-subtitle">Click a card to run it against the target. Results appear in the terminal below.</p>
+    <div class="commands-toolbar">
+      <input id="command-search-input" class="search-input command-search" type="text"
+             placeholder="Search commands (name, category, description)"
+             autocomplete="off" spellcheck="false" aria-label="Search command cards"/>
+      <button class="btn-mini" id="run-all-btn" onclick="runAllVisibleCommands()">▶ RUN VISIBLE</button>
+      <div class="stat-pill" id="visible-count-pill"><span class="dot dot-green"></span>0 visible</div>
+    </div>
     <div class="category-tabs" id="cat-tabs" role="tablist">
       <button class="tab-btn active" data-cat="all"        onclick="filterCards(this)" role="tab">ALL</button>
       <button class="tab-btn" data-cat="Profile"     onclick="filterCards(this)" role="tab">PROFILE</button>
@@ -774,12 +889,22 @@
         <span class="tb-dot tb-yellow"></span>
         <span class="tb-dot tb-green"></span>
         <span class="tb-title">oceangram@osint — bioluminescent shell</span>
+        <div class="terminal-tools">
+          <button class="btn-top" onclick="clearTerminal()">CLEAR</button>
+          <button class="btn-top" onclick="exportTerminal()">EXPORT</button>
+        </div>
       </div>
       <div class="terminal-body" id="terminal-body">
         <div class="t-prompt">🌊 OceanGram v1.0.0 — bioluminescent shell ready</div>
         <div class="t-dim">════════════════════════════════════════════════</div>
         <div class="t-info">Enter a target username, then click any command card.</div>
         <div class="t-dim mt-8"><span class="t-cursor"></span></div>
+      </div>
+    </div>
+    <div class="recent-wrap">
+      <div class="recent-title">RECENT COMMANDS</div>
+      <div id="recent-commands" class="recent-list">
+        <div class="t-dim">No command history yet.</div>
       </div>
     </div>
   </section>
@@ -966,30 +1091,38 @@ const DEMO = {
 function renderCards(filter = 'all') {
   const grid = document.getElementById('commands-grid');
   grid.innerHTML = '';
-  COMMANDS
-    .filter(c => filter === 'all' || c.cat === filter)
-    .forEach(c => {
-      const div = document.createElement('div');
-      div.className = `command-card cat-${c.cat}`;
-      div.dataset.id = c.id;
-      div.setAttribute('role','button');
-      div.setAttribute('tabindex','0');
-      div.setAttribute('aria-label',`Run ${c.name} command`);
-      div.innerHTML = `
-        <span class="card-icon">${c.icon}</span>
-        <div class="card-category">${c.cat.toUpperCase()}</div>
-        <div class="card-name">${c.name}</div>
-        <div class="card-desc">${c.desc}</div>`;
-      div.addEventListener('click', () => runCommand(c));
-      div.addEventListener('keydown', (e) => { if (e.key==='Enter'||e.key===' ') runCommand(c); });
-      grid.appendChild(div);
-    });
+  currentCategory = filter;
+  const visible = getVisibleCommands();
+  visible.forEach(c => {
+    const div = document.createElement('div');
+    div.className = `command-card cat-${c.cat}`;
+    div.dataset.id = c.id;
+    div.setAttribute('role','button');
+    div.setAttribute('tabindex','0');
+    div.setAttribute('aria-label',`Run ${c.name} command`);
+    div.innerHTML = `
+      <span class="card-icon">${c.icon}</span>
+      <div class="card-category">${c.cat.toUpperCase()}</div>
+      <div class="card-name">${c.name}</div>
+      <div class="card-desc">${c.desc}</div>`;
+    div.addEventListener('click', () => runCommand(c));
+    div.addEventListener('keydown', (e) => { if (e.key==='Enter'||e.key===' ') runCommand(c); });
+    grid.appendChild(div);
+  });
+  if (!visible.length) {
+    const empty = document.createElement('div');
+    empty.className = 't-info';
+    empty.textContent = 'No matching commands found.';
+    grid.appendChild(empty);
+  }
+  updateVisibleCount(visible.length);
 }
 
 function filterCards(btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  renderCards(btn.dataset.cat);
+  currentCategory = btn.dataset.cat;
+  renderCards(currentCategory);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1000,6 +1133,16 @@ const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
 const API_TIMEOUT_MS = 15000;
+const TARGET_USERNAME_RE = /^[A-Za-z0-9._]{1,30}$/;
+const MAX_RECENT_COMMANDS = 8;
+const INITIAL_TERMINAL_LINES = [
+  ['prompt', '🌊 OceanGram v1.0.0 — bioluminescent shell ready'],
+  ['dim', '════════════════════════════════════════════════'],
+  ['info', 'Enter a target username, then click any command card.'],
+];
+let currentCategory = 'all';
+let commandSearchText = '';
+let recentCommands = [];
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1037,7 +1180,7 @@ async function animateOutput(lines) {
    ACTIONS
 ═══════════════════════════════════════════════════════════ */
 function getTarget() {
-  return (document.getElementById('target-input').value.trim().replace(/^@/,'') || 'unknown_user');
+  return document.getElementById('target-input').value.trim().replace(/^@/,'');
 }
 
 function getApiBaseUrl() {
@@ -1094,6 +1237,30 @@ function parseLiveOutputLines(data) {
   });
 }
 
+function setTargetValidation(message = '') {
+  const el = document.getElementById('target-validation');
+  if (!el) return;
+  el.textContent = message;
+}
+
+function validateTarget(target) {
+  if (!target) return 'Enter a target username.';
+  if (!TARGET_USERNAME_RE.test(target)) return 'Invalid username format. Use letters, numbers, dot, underscore (max 30).';
+  if (target.startsWith('.') || target.endsWith('.') || target.includes('..')) return 'Invalid username format for Instagram.';
+  return '';
+}
+
+function getValidatedTarget() {
+  const target = getTarget();
+  const err = validateTarget(target);
+  if (err) {
+    setTargetValidation(err);
+    return null;
+  }
+  setTargetValidation('');
+  return target;
+}
+
 async function fetchLiveLines(target, cmd) {
   const base = getApiBaseUrl();
   if (!base) return null;
@@ -1131,22 +1298,111 @@ function selectCommandLines(liveLines, demoLines) {
   return hasUsableLiveResults ? liveLines : [...liveLines, ...demoLines];
 }
 
-async function runCommand(c) {
-  const target = getTarget();
+function getVisibleCommands() {
+  const q = commandSearchText.trim().toLowerCase();
+  return COMMANDS.filter(c => {
+    if (currentCategory !== 'all' && c.cat !== currentCategory) return false;
+    if (!q) return true;
+    const haystack = `${c.name} ${c.cat} ${c.desc}`.toLowerCase();
+    return haystack.includes(q);
+  });
+}
+
+function updateVisibleCount(count) {
+  const pill = document.getElementById('visible-count-pill');
+  if (!pill) return;
+  pill.innerHTML = `<span class="dot dot-green"></span>${count} visible`;
+}
+
+function addRecentCommand(commandId, target) {
+  recentCommands = [{ commandId, target }, ...recentCommands
+    .filter(x => !(x.commandId === commandId && x.target === target))]
+    .slice(0, MAX_RECENT_COMMANDS);
+  renderRecentCommands();
+}
+
+function renderRecentCommands() {
+  const host = document.getElementById('recent-commands');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!recentCommands.length) {
+    host.innerHTML = '<div class="t-dim">No command history yet.</div>';
+    return;
+  }
+  recentCommands.forEach((item, idx) => {
+    const b = document.createElement('button');
+    b.className = 'recent-chip';
+    b.textContent = `@${item.target} :: ${item.commandId}`;
+    b.addEventListener('click', () => rerunRecent(idx));
+    host.appendChild(b);
+  });
+}
+
+async function rerunRecent(index) {
+  const item = recentCommands[index];
+  if (!item) return;
+  const cmd = COMMANDS.find(c => c.id === item.commandId);
+  if (!cmd) return;
+  const tInput = document.getElementById('target-input');
+  if (tInput) tInput.value = item.target;
+  await runCommand(cmd, item.target);
+}
+
+function resetTerminal() {
+  const body = document.getElementById('terminal-body');
+  if (!body) return;
+  body.innerHTML = '';
+  INITIAL_TERMINAL_LINES.forEach(([type, text]) => {
+    const d = document.createElement('div');
+    d.className = `t-${type}`;
+    d.textContent = text;
+    body.appendChild(d);
+  });
+  const last = document.createElement('div');
+  last.className = 't-dim mt-8';
+  last.innerHTML = '<span class="t-cursor"></span>';
+  body.appendChild(last);
+}
+
+function clearTerminal() {
+  resetTerminal();
+}
+
+function exportTerminal() {
+  const body = document.getElementById('terminal-body');
+  if (!body) return;
+  const text = Array.from(body.children).map(el => el.textContent || '').join('\n').trim();
+  if (!text) return;
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `oceangram-terminal-${Date.now()}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function runCommand(c, providedTarget = null) {
+  const target = providedTarget || getValidatedTarget();
+  if (!target) return;
   document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
   const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
   if (el) el.classList.add('active-card');
   const liveLines = await fetchLiveLines(target, c.name);
   const demoLines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
   const lines = selectCommandLines(liveLines, demoLines);
-  animateOutput(lines);
+  addRecentCommand(c.id, target);
+  await animateOutput(lines);
   document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 function startScan() {
+  const target = getValidatedTarget();
+  if (!target) return;
   const btn = document.getElementById('dive-btn');
   btn.classList.add('loading');
-  const target = getTarget();
   setTimeout(() => {
     btn.classList.remove('loading');
     animateOutput([
@@ -1160,6 +1416,26 @@ function startScan() {
     ]);
     document.querySelector('.commands-grid').scrollIntoView({ behavior:'smooth', block:'start' });
   }, 1200);
+}
+
+async function runAllVisibleCommands() {
+  const target = getValidatedTarget();
+  if (!target) return;
+  const visible = getVisibleCommands();
+  if (!visible.length) {
+    setTargetValidation('No commands visible. Adjust category or search.');
+    return;
+  }
+  const btn = document.getElementById('run-all-btn');
+  if (btn) btn.disabled = true;
+  try {
+    for (const c of visible) {
+      // sequential to preserve terminal readability
+      await runCommand(c, target);
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 document.getElementById('target-input').addEventListener('keydown', (e) => {
@@ -1552,7 +1828,22 @@ if (apiInput) {
     setLiveModePill();
   });
 }
+const cmdSearchInput = document.getElementById('command-search-input');
+if (cmdSearchInput) {
+  cmdSearchInput.addEventListener('input', () => {
+    commandSearchText = cmdSearchInput.value || '';
+    renderCards(currentCategory);
+  });
+}
+const targetInput = document.getElementById('target-input');
+if (targetInput) {
+  targetInput.addEventListener('input', () => {
+    if (!targetInput.value.trim()) setTargetValidation('');
+  });
+}
 setLiveModePill();
+renderRecentCommands();
+resetTerminal();
 renderCards();
 </script>
 </body>

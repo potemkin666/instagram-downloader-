@@ -18,6 +18,10 @@ https://potemkin666.github.io/instagram-downloader-/
 - **20 OSINT command cards** — organised by category (Profile, Social, Content, Engagement, Contact)
 - **Interactive terminal panel** — click any card to see simulated command output with typewriter animation
 - **Optional live mode** — set a backend API URL in the UI to fetch real command results
+- **Command search + visible-runner** — search command cards and run all currently visible commands in sequence
+- **Input validation + recent history** — validate Instagram usernames and quickly rerun recent command/target pairs
+- **Terminal utilities** — clear terminal output and export terminal logs to `.txt`
+- **Mermaid media gallery** — includes static and animated mermaid pixel-art panels
 - **Filterable command grid** — filter by category tabs
 - **Quick-start code block** — copy the Osintgram install commands in one click
 - **Fully responsive** — works on mobile and desktop
