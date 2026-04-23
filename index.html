@@ -1345,6 +1345,12 @@ function scheduleApiHealthCheck() {
   }, API_HEALTH_DEBOUNCE_MS);
 }
 
+function tryAcquireCommandLock() {
+  if (commandInFlight) return false;
+  commandInFlight = true;
+  return true;
+}
+
 function parseLiveOutputLines(data) {
   if (Array.isArray(data?.lines) && data.lines.every(l =>
     Array.isArray(l)
@@ -1697,11 +1703,10 @@ function setCommandBusyState(isBusy) {
 }
 
 async function runCommand(c, providedTarget = null) {
-  if (commandInFlight) {
+  if (!tryAcquireCommandLock()) {
     setTargetValidation('A command is already running. Please wait for it to finish.');
     return;
   }
-  commandInFlight = true;
   const target = providedTarget ?? getValidatedTarget();
   if (!target) {
     commandInFlight = false;
@@ -2207,7 +2212,7 @@ document.addEventListener('keydown', (e) => {
   const withMeta = e.ctrlKey || e.metaKey;
   const target = e.target;
   const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
-  const isEditable = target && (target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select');
+  const isEditable = target && (target.isContentEditable === true || tag === 'input' || tag === 'textarea' || tag === 'select');
   if (isEditable && !(withMeta && key === 'k') && key !== 'escape') return;
   if (withMeta && key === 'enter') {
     e.preventDefault();
