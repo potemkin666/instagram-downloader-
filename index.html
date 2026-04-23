@@ -1289,7 +1289,7 @@ async function fetchLiveLines(target, cmd) {
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
     const data = await res.json();
     const payload = parseLiveOutputLines(data);
-    const hasMeaningfulPayload = payload.some(([, text]) => String(text || '').trim().length > 0);
+    const hasMeaningfulPayload = payload.length > 0 && payload.some(([, text]) => String(text || '').trim().length > 0);
     if (!hasMeaningfulPayload) {
       return [
         ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],

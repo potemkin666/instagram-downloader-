@@ -16,7 +16,7 @@ https://<your-username>.github.io/instagram-downloader-/
 
 - **Ocean-themed UI** — deep-sea gradient, animated bubbles, shimmering particle canvas, and SVG waves
 - **20 OSINT command cards** — organised by category (Profile, Social, Content, Engagement, Contact)
-- **Interactive terminal panel** — click any card to see live command output with typewriter animation
+- **Interactive terminal panel** — click any card to see backend command output with typewriter animation (backend URL required)
 - **Optional live mode** — set a backend API URL in the UI to fetch real command results
 - **Command search + visible-runner** — search command cards and run all currently visible commands in sequence
 - **Input validation + recent history** — validate Instagram usernames and quickly rerun recent command/target pairs
