@@ -1150,6 +1150,7 @@ const API_HEALTH_DEBOUNCE_MS = 700;
 const RUN_ALL_LABEL_DEFAULT = 'RUN VISIBLE';
 const RUN_ALL_LABEL_STOP = 'STOP';
 const COMMAND_CATEGORIES = new Set(['all', 'Profile', 'Social', 'Content', 'Engagement', 'Contact', 'favorites']);
+const DEFAULT_COMMAND_UI_STATE = { category: 'all', search: '', sort: 'default' };
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
 const MAX_RECENT_COMMANDS = 8;
@@ -1301,11 +1302,11 @@ function persistCommandUiState() {
 
 function readStoredCommandUiState() {
   const state = readStoredJson(COMMAND_UI_STATE_STORAGE_KEY, {});
-  if (!state || typeof state !== 'object') return { category: 'all', search: '', sort: 'default' };
+  if (!state || typeof state !== 'object') return { ...DEFAULT_COMMAND_UI_STATE };
   return {
-    category: COMMAND_CATEGORIES.has(state.category) ? state.category : 'all',
-    search: typeof state.search === 'string' ? state.search : '',
-    sort: ['default', 'name', 'category', 'used'].includes(state.sort) ? state.sort : 'default',
+    category: COMMAND_CATEGORIES.has(state.category) ? state.category : DEFAULT_COMMAND_UI_STATE.category,
+    search: typeof state.search === 'string' ? state.search : DEFAULT_COMMAND_UI_STATE.search,
+    sort: ['default', 'name', 'category', 'used'].includes(state.sort) ? state.sort : DEFAULT_COMMAND_UI_STATE.sort,
   };
 }
 
@@ -1349,6 +1350,12 @@ function tryAcquireCommandLock() {
   if (commandInFlight) return false;
   commandInFlight = true;
   return true;
+}
+
+function isEditableElement(target) {
+  if (!target) return false;
+  const tag = target.tagName ? target.tagName.toLowerCase() : '';
+  return target.isContentEditable === true || tag === 'input' || tag === 'textarea' || tag === 'select';
 }
 
 function parseLiveOutputLines(data) {
@@ -2211,8 +2218,7 @@ document.addEventListener('keydown', (e) => {
   const key = (e.key || '').toLowerCase();
   const withMeta = e.ctrlKey || e.metaKey;
   const target = e.target;
-  const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
-  const isEditable = target && (target.isContentEditable === true || tag === 'input' || tag === 'textarea' || tag === 'select');
+  const isEditable = isEditableElement(target);
   if (isEditable && !(withMeta && key === 'k') && key !== 'escape') return;
   if (withMeta && key === 'enter') {
     e.preventDefault();
