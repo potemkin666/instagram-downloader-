@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OceanGram — Instagram OSINT Tool</title>
+  <meta name="description" content="Ocean-themed Instagram OSINT intelligence tool. Analyse followers, posts, hashtags, stories and more." />
+  <style>
+    /* ── Palette ─────────────────────────────────────────── */
+    :root {
+      --abyss:       #000d1a;
+      --deep:        #001a2e;
+      --mid:         #002b45;
+      --surface:     #00405f;
+      --lagoon:      #005f7e;
+      --aqua:        #00b4d8;
+      --seafoam:     #48cae4;
+      --foam:        #90e0ef;
+      --pearl:       #caf0f8;
+      --glow:        #00f5d4;
+      --glow-dim:    rgba(0, 245, 212, 0.18);
+      --card-bg:     rgba(0, 64, 95, 0.35);
+      --card-border: rgba(0, 180, 216, 0.25);
+      --danger:      #ff4d6d;
+      --warn:        #ffd166;
+      --good:        #06d6a0;
+      --radius:      14px;
+      --transition:  0.3s ease;
+    }
+
+    /* ── Reset ───────────────────────────────────────────── */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--abyss);
+      color: var(--pearl);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    a { color: var(--aqua); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Ocean background canvas ─────────────────────────── */
+    #ocean-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      pointer-events: none;
+    }
+
+    /* ── Particle bubbles ─────────────────────────────────── */
+    .bubble {
+      position: fixed;
+      bottom: -80px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(0,245,212,0.45), rgba(0,180,216,0.08));
+      border: 1px solid rgba(0,245,212,0.2);
+      animation: rise linear infinite;
+      pointer-events: none;
+      z-index: -1;
+    }
+    @keyframes rise {
+      0%   { transform: translateY(0) translateX(0) scale(1);   opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 0.6; }
+      100% { transform: translateY(-110vh) translateX(var(--drift)) scale(0.6); opacity: 0; }
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    header {
+      position: relative;
+      text-align: center;
+      padding: 60px 20px 0;
+      overflow: hidden;
+    }
+    .header-inner {
+      position: relative;
+      z-index: 1;
+    }
+    .logo {
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, var(--glow) 0%, var(--seafoam) 40%, var(--pearl) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: inline-block;
+      filter: drop-shadow(0 0 18px rgba(0,245,212,0.4));
+    }
+    .logo-icon { filter: none; -webkit-text-fill-color: unset; }
+    .tagline {
+      margin-top: 10px;
+      font-size: 1.05rem;
+      color: var(--foam);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .disclaimer {
+      display: inline-block;
+      margin-top: 14px;
+      background: rgba(255, 77, 109, 0.12);
+      border: 1px solid rgba(255,77,109,0.35);
+      color: #ff8fa3;
+      font-size: 0.78rem;
+      padding: 6px 16px;
+      border-radius: 100px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── SVG Wave divider ────────────────────────────────── */
+    .wave-divider {
+      display: block;
+      width: 100%;
+      margin-top: 30px;
+      overflow: hidden;
+      line-height: 0;
+    }
+    .wave-divider svg { display:block; width:100%; }
+    .wave-path-1 { animation: waveDrift 8s ease-in-out infinite alternate; }
+    .wave-path-2 { animation: waveDrift 11s ease-in-out infinite alternate-reverse; }
+    @keyframes waveDrift {
+      from { transform: translateX(-20px); }
+      to   { transform: translateX(20px);  }
+    }
+
+    /* ── Main container ─────────────────────────────────── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+
+    /* ── Section headings ────────────────────────────────── */
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--seafoam);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-subtitle {
+      color: var(--foam);
+      font-size: 0.9rem;
+      margin-bottom: 28px;
+      opacity: 0.8;
+    }
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--card-border), transparent);
+      margin: 48px 0;
+    }
+
+    /* ── Search section ─────────────────────────────────── */
+    .search-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 36px 40px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .search-card::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: calc(var(--radius) + 2px);
+      background: linear-gradient(135deg, rgba(0,245,212,0.15), transparent 60%);
+      z-index: 0;
+      pointer-events: none;
+    }
+    .search-card > * { position: relative; z-index: 1; }
+    .search-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--pearl);
+      margin-bottom: 6px;
+    }
+    .search-desc {
+      color: var(--foam);
+      font-size: 0.88rem;
+      margin-bottom: 24px;
+    }
+    .search-row {
+      display: flex;
+      gap: 12px;
+      max-width: 540px;
+      margin: 0 auto;
+    }
+    .search-input {
+      flex: 1;
+      padding: 13px 20px;
+      border-radius: 100px;
+      border: 1.5px solid var(--card-border);
+      background: rgba(0, 20, 40, 0.7);
+      color: var(--pearl);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .search-input::placeholder { color: rgba(144,224,239,0.45); }
+    .search-input:focus {
+      border-color: var(--glow);
+      box-shadow: 0 0 0 3px rgba(0,245,212,0.12), 0 0 20px rgba(0,245,212,0.1);
+    }
+    .btn-dive {
+      padding: 13px 28px;
+      border-radius: 100px;
+      border: none;
+      background: linear-gradient(135deg, var(--glow), var(--aqua));
+      color: var(--abyss);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-dive:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(0,245,212,0.4);
+      filter: brightness(1.08);
+    }
+    .btn-dive:active { transform: translateY(0); }
+    .btn-dive.loading .btn-text { display:none; }
+    .btn-dive.loading::after {
+      content: '';
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 3px solid rgba(0,0,0,0.3);
+      border-top-color: var(--abyss);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* sonar pulse ring behind the button */
+    .sonar-wrap { position: relative; display: inline-block; }
+    .sonar-ring {
+      position: absolute;
+      inset: -6px;
+      border-radius: 100px;
+      border: 2px solid var(--glow);
+      opacity: 0;
+      animation: sonar 2.5s ease-out infinite;
+      pointer-events: none;
+    }
+    @keyframes sonar {
+      0%   { transform: scale(1);    opacity: 0.6; }
+      100% { transform: scale(1.6);  opacity: 0; }
+    }
+
+    /* ── Stats bar ───────────────────────────────────────── */
+    .stats-bar {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin: 28px 0 0;
+      justify-content: center;
+    }
+    .stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0,64,95,0.5);
+      border: 1px solid var(--card-border);
+      border-radius: 100px;
+      padding: 7px 18px;
+      font-size: 0.85rem;
+      color: var(--foam);
+      transition: border-color var(--transition);
+    }
+    .stat-pill .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-green  { background: var(--good);   box-shadow: 0 0 6px var(--good); }
+    .dot-yellow { background: var(--warn);   box-shadow: 0 0 6px var(--warn); }
+    .dot-red    { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+    /* ── Category filter tabs ────────────────────────────── */
+    .category-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .tab-btn {
+      padding: 7px 18px;
+      border-radius: 100px;
+      border: 1.5px solid var(--card-border);
+      background: transparent;
+      color: var(--foam);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .tab-btn:hover, .tab-btn.active {
+      border-color: var(--glow);
+      background: rgba(0,245,212,0.1);
+      color: var(--glow);
+    }
+
+    /* ── Command cards grid ─────────────────────────────── */
+    .commands-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 16px;
+    }
+    .command-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 22px 22px 18px;
+      cursor: pointer;
+      transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition), background var(--transition);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+    }
+    .command-card::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 3px;
+      background: linear-gradient(90deg, var(--glow), var(--aqua));
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform var(--transition);
+    }
+    .command-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(0,245,212,0.5);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 0 20px rgba(0,245,212,0.12);
+      background: rgba(0,80,120,0.45);
+    }
+    .command-card:hover::after { transform: scaleX(1); }
+    .command-card.active-card {
+      border-color: var(--glow);
+      box-shadow: 0 0 0 2px rgba(0,245,212,0.25), 0 8px 32px rgba(0,245,212,0.15);
+    }
+    .card-icon {
+      font-size: 1.8rem;
+      margin-bottom: 12px;
+      display: block;
+      filter: drop-shadow(0 0 8px rgba(0,245,212,0.4));
+    }
+    .card-category {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      opacity: 0.7;
+    }
+    .card-name {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--seafoam);
+      font-family: 'Courier New', monospace;
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 0.82rem;
+      color: var(--foam);
+      line-height: 1.5;
+      opacity: 0.85;
+    }
+
+    /* category colour accents on cards */
+    .cat-profile   .card-category { color: #90e0ef; }
+    .cat-social    .card-category { color: #48cae4; }
+    .cat-content   .card-category { color: #00b4d8; }
+    .cat-engagement .card-category { color: var(--warn); }
+    .cat-contact   .card-category { color: var(--good); }
+
+    /* ── Terminal ────────────────────────────────────────── */
+    .terminal-wrap {
+      background: rgba(0, 8, 20, 0.85);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 8px 48px rgba(0,0,0,0.5);
+    }
+    .terminal-topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 18px;
+      background: rgba(0, 20, 40, 0.9);
+      border-bottom: 1px solid var(--card-border);
+    }
+    .tb-dot {
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .tb-red    { background: #ff5f57; }
+    .tb-yellow { background: #febc2e; }
+    .tb-green  { background: #28c840; }
+    .tb-title {
+      margin-left: 8px;
+      font-size: 0.82rem;
+      color: var(--foam);
+      opacity: 0.6;
+      font-family: monospace;
+      flex: 1;
+      text-align: center;
+    }
+    .terminal-body {
+      padding: 20px 24px;
+      min-height: 260px;
+      max-height: 420px;
+      overflow-y: auto;
+      font-family: 'Courier New', 'Fira Mono', monospace;
+      font-size: 0.88rem;
+      line-height: 1.7;
+    }
+    .terminal-body::-webkit-scrollbar { width: 6px; }
+    .terminal-body::-webkit-scrollbar-track { background: transparent; }
+    .terminal-body::-webkit-scrollbar-thumb { background: var(--card-border); border-radius:3px; }
+
+    .t-prompt  { color: var(--glow);   }
+    .t-info    { color: var(--foam);   }
+    .t-result  { color: var(--pearl);  }
+    .t-label   { color: var(--aqua);   font-weight:600; }
+    .t-warn    { color: var(--warn);   }
+    .t-error   { color: var(--danger); }
+    .t-success { color: var(--good);   }
+    .t-dim     { color: rgba(144,224,239,0.45); }
+    .t-cursor  {
+      display: inline-block;
+      width: 9px; height: 15px;
+      background: var(--glow);
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+      margin-left: 2px;
+    }
+    @keyframes blink { 50% { opacity:0; } }
+
+    /* ── How-to section ─────────────────────────────────── */
+    .how-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .how-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      text-align: center;
+    }
+    .how-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--glow), var(--aqua));
+      color: var(--abyss);
+      font-weight: 800;
+      font-size: 1rem;
+      margin-bottom: 14px;
+    }
+    .how-title { font-size: 1rem; font-weight: 600; color: var(--seafoam); margin-bottom:6px; }
+    .how-desc  { font-size: 0.83rem; color: var(--foam); line-height:1.5; opacity:0.85; }
+
+    /* ── Install snippet ─────────────────────────────────── */
+    .code-block {
+      background: rgba(0,8,20,0.8);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.88rem;
+      color: var(--pearl);
+      overflow-x: auto;
+      position: relative;
+    }
+    .code-block .comment { color: rgba(144,224,239,0.45); }
+    .code-block .cmd     { color: var(--glow); }
+    .code-block .arg     { color: var(--seafoam); }
+    .copy-btn {
+      position: absolute;
+      top: 12px; right: 12px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+      background: transparent;
+      color: var(--foam);
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .copy-btn:hover { border-color: var(--glow); color: var(--glow); }
+    .copy-btn.copied { border-color: var(--good); color: var(--good); }
+
+    /* ── Footer ─────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 40px 20px;
+      border-top: 1px solid var(--card-border);
+      font-size: 0.85rem;
+      color: var(--foam);
+      opacity: 0.7;
+      position: relative;
+    }
+    footer p + p { margin-top: 6px; }
+
+    /* ── Utility ─────────────────────────────────────────── */
+    .mt-8  { margin-top: 8px; }
+    .mt-16 { margin-top: 16px; }
+    .mb-4  { margin-bottom: 4px; }
+    .hidden { display: none !important; }
+
+    /* ── Responsive ──────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .search-row { flex-direction: column; }
+      .search-card { padding: 24px 20px; }
+      .terminal-body { max-height: 300px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Ocean canvas (deep gradient + shimmer) ── -->
+<canvas id="ocean-canvas" aria-hidden="true"></canvas>
+
+<!-- ── Header ───────────────────────────────────── -->
+<header>
+  <div class="header-inner">
+    <div class="logo"><span class="logo-icon">🌊</span> OceanGram</div>
+    <p class="tagline">Instagram OSINT Intelligence Tool</p>
+    <span class="disclaimer">⚠️ For educational purposes only — use responsibly</span>
+  </div>
+
+  <!-- Animated SVG waves -->
+  <div class="wave-divider">
+    <svg viewBox="0 0 1440 90" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <path class="wave-path-1" d="M0,40 C240,80 480,0 720,40 C960,80 1200,0 1440,40 L1440,90 L0,90 Z"
+            fill="rgba(0,64,95,0.4)"/>
+      <path class="wave-path-2" d="M0,55 C200,20 400,80 640,55 C880,30 1120,80 1440,55 L1440,90 L0,90 Z"
+            fill="rgba(0,48,80,0.6)"/>
+      <path d="M0,65 C300,95 600,45 900,65 C1100,80 1280,50 1440,65 L1440,90 L0,90 Z"
+            fill="rgba(0,26,46,0.85)"/>
+    </svg>
+  </div>
+</header>
+
+<!-- ── Main ─────────────────────────────────────── -->
+<main class="container">
+
+  <!-- Search -->
+  <section aria-label="Target search">
+    <div class="search-card">
+      <p class="search-title">🔭 Begin Reconnaissance</p>
+      <p class="search-desc">Enter an Instagram username and choose a command below to start your dive.</p>
+      <div class="search-row">
+        <input
+          id="target-input"
+          class="search-input"
+          type="text"
+          placeholder="@username"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Instagram username"
+        />
+        <div class="sonar-wrap">
+          <span class="sonar-ring"></span>
+          <button class="btn-dive" id="dive-btn" onclick="startScan()">
+            <span class="btn-text">🤿 Dive In</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="stats-bar">
+        <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
+        <div class="stat-pill"><span class="dot dot-yellow"></span>Demo mode active</div>
+        <div class="stat-pill"><span class="dot dot-red"></span>Private profiles unsupported</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Commands -->
+  <section aria-label="OSINT commands">
+    <h2 class="section-title">🧰 OSINT Commands</h2>
+    <p class="section-subtitle">Click a card to run the command against the target username.</p>
+
+    <!-- Filter tabs -->
+    <div class="category-tabs" id="cat-tabs" role="tablist">
+      <button class="tab-btn active" data-cat="all" onclick="filterCards(this)" role="tab">All</button>
+      <button class="tab-btn" data-cat="Profile"     onclick="filterCards(this)" role="tab">Profile</button>
+      <button class="tab-btn" data-cat="Social"      onclick="filterCards(this)" role="tab">Social</button>
+      <button class="tab-btn" data-cat="Content"     onclick="filterCards(this)" role="tab">Content</button>
+      <button class="tab-btn" data-cat="Engagement"  onclick="filterCards(this)" role="tab">Engagement</button>
+      <button class="tab-btn" data-cat="Contact"     onclick="filterCards(this)" role="tab">Contact Data</button>
+    </div>
+
+    <div class="commands-grid" id="commands-grid"></div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Terminal output -->
+  <section aria-label="Terminal output">
+    <h2 class="section-title">💻 Live Terminal</h2>
+    <p class="section-subtitle">Results appear here — simulated output for demo purposes.</p>
+
+    <div class="terminal-wrap">
+      <div class="terminal-topbar">
+        <span class="tb-dot tb-red"></span>
+        <span class="tb-dot tb-yellow"></span>
+        <span class="tb-dot tb-green"></span>
+        <span class="tb-title">oceangram@osint:~$</span>
+      </div>
+      <div class="terminal-body" id="terminal-body">
+        <div class="t-prompt">🌊 OceanGram v1.0.0 — ready</div>
+        <div class="t-dim">────────────────────────────────────────</div>
+        <div class="t-info">Enter a target username, then click a command card.</div>
+        <div class="t-dim mt-8"><span class="t-cursor"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- How it works -->
+  <section aria-label="How to use">
+    <h2 class="section-title">🗺️ How It Works</h2>
+    <p class="section-subtitle">OceanGram wraps the Osintgram toolkit in an ocean-themed web interface.</p>
+    <div class="how-grid">
+      <div class="how-card">
+        <div class="how-num">1</div>
+        <div class="how-title">Clone the Repo</div>
+        <div class="how-desc">Fork &amp; clone this repository, then set up your Instagram credentials.</div>
+      </div>
+      <div class="how-card">
+        <div class="how-num">2</div>
+        <div class="how-title">Install Dependencies</div>
+        <div class="how-desc">Run <code>pip install -r requirements.txt</code> inside a virtual environment.</div>
+      </div>
+      <div class="how-card">
+        <div class="how-num">3</div>
+        <div class="how-title">Pick a Target</div>
+        <div class="how-desc">Supply a public Instagram username — private accounts cannot be accessed.</div>
+      </div>
+      <div class="how-card">
+        <div class="how-num">4</div>
+        <div class="how-title">Run Commands</div>
+        <div class="how-desc">Execute any OSINT command to collect followers, media, hashtags, and more.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Quick-start snippet -->
+  <section aria-label="Quick start">
+    <h2 class="section-title">⚡ Quick Start</h2>
+    <p class="section-subtitle">Get up and running in under a minute.</p>
+    <div class="code-block" id="code-block">
+      <button class="copy-btn" onclick="copyCode(this)" aria-label="Copy code">Copy</button>
+      <div><span class="comment"># 1 — Clone</span></div>
+      <div><span class="cmd">git</span> <span class="arg">clone</span> https://github.com/Datalux/Osintgram.git &amp;&amp; <span class="cmd">cd</span> Osintgram</div>
+      <div class="mt-8"><span class="comment"># 2 — Virtual environment</span></div>
+      <div><span class="cmd">python3</span> <span class="arg">-m venv</span> venv &amp;&amp; <span class="cmd">source</span> venv/bin/activate</div>
+      <div class="mt-8"><span class="comment"># 3 — Install</span></div>
+      <div><span class="cmd">pip</span> <span class="arg">install</span> -r requirements.txt</div>
+      <div class="mt-8"><span class="comment"># 4 — Configure credentials</span></div>
+      <div><span class="cmd">make</span> <span class="arg">setup</span></div>
+      <div class="mt-8"><span class="comment"># 5 — Run (interactive mode)</span></div>
+      <div><span class="cmd">python3</span> <span class="arg">main.py</span> &lt;target_username&gt;</div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Footer ───────────────────────────────────── -->
+<footer>
+  <p>🌊 OceanGram — built on top of <a href="https://github.com/Datalux/Osintgram" target="_blank" rel="noopener">Osintgram</a> by Datalux</p>
+  <p>For educational and research use only. The authors assume no responsibility for misuse.</p>
+</footer>
+
+<!-- ── Scripts ──────────────────────────────────── -->
+<script>
+/* ═══════════════════════════════════════════════════
+   COMMAND DATA
+═══════════════════════════════════════════════════ */
+const COMMANDS = [
+  // Profile
+  { id:'info',      name:'info',         icon:'🔍', cat:'Profile',    desc:'Retrieve full account info: bio, followers count, post count, and verification status.' },
+  { id:'propic',    name:'propic',       icon:'🖼️', cat:'Profile',    desc:'Download the target\'s profile picture at full resolution.' },
+
+  // Social
+  { id:'followers', name:'followers',    icon:'👥', cat:'Social',     desc:'List all followers of the target account with usernames and IDs.' },
+  { id:'followings',name:'followings',   icon:'🔗', cat:'Social',     desc:'List all accounts that the target is following.' },
+  { id:'tagged',    name:'tagged',       icon:'🏷️', cat:'Social',     desc:'Get a list of users who were tagged by the target in their posts.' },
+  { id:'wtagged',   name:'wtagged',      icon:'📌', cat:'Social',     desc:'Get a list of users who tagged the target in their posts.' },
+  { id:'wcommented',name:'wcommented',   icon:'💬', cat:'Social',     desc:'Get a list of users who commented on the target\'s posts.' },
+
+  // Content
+  { id:'photos',    name:'photos',       icon:'📸', cat:'Content',    desc:'Download all public photos posted by the target to an output folder.' },
+  { id:'stories',   name:'stories',      icon:'🎞️', cat:'Content',    desc:'Download the target\'s currently active stories.' },
+  { id:'captions',  name:'captions',     icon:'✍️', cat:'Content',    desc:'Collect captions from all of the target\'s posts.' },
+  { id:'photodes',  name:'photodes',     icon:'🖼️', cat:'Content',    desc:'Get the descriptions / alt-text of the target\'s photos.' },
+  { id:'mediatype', name:'mediatype',    icon:'🎬', cat:'Content',    desc:'Classify each post as photo or video.' },
+  { id:'hashtags',  name:'hashtags',     icon:'#️⃣', cat:'Content',    desc:'Extract and count all hashtags used by the target.' },
+
+  // Engagement
+  { id:'likes',     name:'likes',        icon:'❤️', cat:'Engagement', desc:'Get total likes across all of the target\'s posts.' },
+  { id:'comments',  name:'comments',     icon:'💭', cat:'Engagement', desc:'Get total comments across all of the target\'s posts.' },
+
+  // Contact
+  { id:'addrs',     name:'addrs',        icon:'📍', cat:'Contact',    desc:'Collect all registered addresses found in target\'s photo metadata.' },
+  { id:'fwersemail',name:'fwersemail',   icon:'📧', cat:'Contact',    desc:'Scrape email addresses from the target\'s followers.' },
+  { id:'fwingsemail',name:'fwingsemail', icon:'📨', cat:'Contact',    desc:'Scrape email addresses from accounts the target follows.' },
+  { id:'fwersnumber',name:'fwersnumber', icon:'📞', cat:'Contact',    desc:'Extract phone numbers from the target\'s followers.' },
+  { id:'fwingsnumber',name:'fwingsnumber',icon:'☎️', cat:'Contact',   desc:'Extract phone numbers from accounts the target follows.' },
+];
+
+/* ═══════════════════════════════════════════════════
+   DEMO OUTPUT DATA
+═══════════════════════════════════════════════════ */
+const DEMO = {
+  info: (t) => [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command info`],
+    ['dim',    '──────────────────────────────────────────────────'],
+    ['label',  '[ Account Info ]'],
+    ['result', `  Username    :  @${t}`],
+    ['result', `  Full Name   :  ${capitalize(t)} (demo)`],
+    ['result', `  Followers   :  12,847`],
+    ['result', `  Following   :  934`],
+    ['result', `  Posts       :  218`],
+    ['result', `  Private     :  No`],
+    ['result', `  Verified    :  No`],
+    ['result', `  Bio         :  🌊 Ocean explorer | Diving into the deep`],
+    ['success', `[✔] Done`],
+  ],
+  followers: (t) => [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command followers`],
+    ['dim',    '──────────────────────────────────────────────────'],
+    ['label',  '[ Followers ]'],
+    ['result', `  @deepsea_dan        (ID: 10023881)`],
+    ['result', `  @mermaid_marina     (ID: 10481920)`],
+    ['result', `  @coral_queen        (ID: 20398471)`],
+    ['result', `  @wave_rider_99      (ID: 30012847)`],
+    ['result', `  @ocean_photography  (ID: 48291038)`],
+    ['dim',    `  … and 12,842 more`],
+    ['success', `[✔] 12,847 followers found`],
+  ],
+  photos: (t) => [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command photos`],
+    ['dim',    '──────────────────────────────────────────────────'],
+    ['label',  '[ Downloading Photos ]'],
+    ['info',   `  Scanning ${t}'s media…`],
+    ['result', `  [1/5]  output/photo_1.jpg   ██████████ 100%`],
+    ['result', `  [2/5]  output/photo_2.jpg   ██████████ 100%`],
+    ['result', `  [3/5]  output/photo_3.jpg   ██████████ 100%`],
+    ['result', `  [4/5]  output/photo_4.jpg   ██████████ 100%`],
+    ['result', `  [5/5]  output/photo_5.jpg   ██████████ 100%`],
+    ['dim',    `  (showing 5 of 218 posts — demo mode)`],
+    ['success', `[✔] 5 photos saved to ./output/`],
+  ],
+  hashtags: (t) => [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command hashtags`],
+    ['dim',    '──────────────────────────────────────────────────'],
+    ['label',  '[ Top Hashtags ]'],
+    ['result', `  #ocean           42 uses`],
+    ['result', `  #underwater      38 uses`],
+    ['result', `  #diving          31 uses`],
+    ['result', `  #marinelife      27 uses`],
+    ['result', `  #coral           19 uses`],
+    ['result', `  #deepblue        15 uses`],
+    ['success', `[✔] 6 unique hashtags extracted`],
+  ],
+  likes: (t) => [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command likes`],
+    ['dim',    '──────────────────────────────────────────────────'],
+    ['label',  '[ Engagement — Likes ]'],
+    ['result', `  Total posts   :  218`],
+    ['result', `  Total likes   :  487,301`],
+    ['result', `  Avg per post  :  2,235`],
+    ['result', `  Peak post     :  14,820 likes`],
+    ['success', `[✔] Done`],
+  ],
+  comments: (t) => [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command comments`],
+    ['dim',    '──────────────────────────────────────────────────'],
+    ['label',  '[ Engagement — Comments ]'],
+    ['result', `  Total posts    :  218`],
+    ['result', `  Total comments :  23,847`],
+    ['result', `  Avg per post   :  109`],
+    ['success', `[✔] Done`],
+  ],
+  _default: (t, cmd) => [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command ${cmd}`],
+    ['dim',    '──────────────────────────────────────────────────'],
+    ['label',  `[ ${cmd} ]`],
+    ['info',   `  Fetching data for @${t}…`],
+    ['result', `  [demo] This command would run against the live Instagram API.`],
+    ['result', `  Results depend on account privacy settings and API rate limits.`],
+    ['warn',   `  [!] Demo mode — no real data returned`],
+    ['success', `[✔] Command completed (simulated)`],
+  ],
+};
+
+/* ═══════════════════════════════════════════════════
+   RENDER COMMAND CARDS
+═══════════════════════════════════════════════════ */
+const catSlug = (c) => 'cat-' + c.toLowerCase().replace(/\s+/g,'-');
+
+function renderCards(filter = 'all') {
+  const grid = document.getElementById('commands-grid');
+  grid.innerHTML = '';
+  COMMANDS
+    .filter(c => filter === 'all' || c.cat === filter)
+    .forEach(c => {
+      const div = document.createElement('div');
+      div.className = `command-card ${catSlug(c.cat)}`;
+      div.dataset.id = c.id;
+      div.dataset.cat = c.cat;
+      div.setAttribute('role', 'button');
+      div.setAttribute('tabindex', '0');
+      div.setAttribute('aria-label', `Run ${c.name} command`);
+      div.innerHTML = `
+        <span class="card-icon">${c.icon}</span>
+        <div class="card-category">${c.cat}</div>
+        <div class="card-name">${c.name}</div>
+        <div class="card-desc">${c.desc}</div>`;
+      div.addEventListener('click', () => runCommand(c));
+      div.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') runCommand(c); });
+      grid.appendChild(div);
+    });
+}
+
+function filterCards(btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCards(btn.dataset.cat);
+}
+
+/* ═══════════════════════════════════════════════════
+   TERMINAL
+═══════════════════════════════════════════════════ */
+let _typing = false;
+
+function printLine(body, type, text, delay) {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const d = document.createElement('div');
+      d.className = `t-${type}`;
+      d.textContent = text;
+      body.appendChild(d);
+      body.scrollTop = body.scrollHeight;
+      resolve();
+    }, delay);
+  });
+}
+
+async function animateOutput(lines) {
+  if (_typing) return;
+  _typing = true;
+
+  const body = document.getElementById('terminal-body');
+  body.innerHTML = '';
+  let delay = 0;
+
+  for (const [type, text] of lines) {
+    await printLine(body, type, text, delay);
+    delay += type === 'prompt' ? 0 : 60;
+  }
+
+  // blinking cursor
+  const cur = document.createElement('span');
+  cur.className = 't-cursor';
+  const last = document.createElement('div');
+  last.className = 't-dim';
+  last.appendChild(cur);
+  body.appendChild(last);
+
+  _typing = false;
+}
+
+/* ═══════════════════════════════════════════════════
+   ACTIONS
+═══════════════════════════════════════════════════ */
+function getTarget() {
+  return (document.getElementById('target-input').value.trim().replace(/^@/,'') || 'unknown_user');
+}
+
+function runCommand(c) {
+  const target = getTarget();
+  // highlight active card
+  document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
+  const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
+  if (el) el.classList.add('active-card');
+
+  const lines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
+  animateOutput(lines);
+
+  // scroll terminal into view
+  document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function startScan() {
+  const btn = document.getElementById('dive-btn');
+  btn.classList.add('loading');
+  const target = getTarget();
+
+  setTimeout(() => {
+    btn.classList.remove('loading');
+    animateOutput([
+      ['prompt',  `oceangram@osint:~$ oceangram --target ${target}`],
+      ['dim',     '──────────────────────────────────────────────────'],
+      ['info',    `  Initialising OceanGram for target: @${target}`],
+      ['result',  `  Checking if account is public…`],
+      ['success', `  [✔] @${target} is accessible`],
+      ['info',    `  Ready. Click any command card to begin your dive.`],
+      ['dim',     `  ─── 20 commands available ───`],
+    ]);
+    document.querySelector('.commands-grid').scrollIntoView({ behavior:'smooth', block:'start' });
+  }, 1200);
+}
+
+/* ── Enter key on search input ── */
+document.getElementById('target-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') startScan();
+});
+
+/* ═══════════════════════════════════════════════════
+   COPY CODE BUTTON
+═══════════════════════════════════════════════════ */
+function copyCode(btn) {
+  const block = document.getElementById('code-block');
+  const text = Array.from(block.querySelectorAll('div'))
+    .map(d => d.textContent.trim())
+    .filter(Boolean)
+    .join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   OCEAN CANVAS — deep gradient + shimmer particles
+═══════════════════════════════════════════════════ */
+(function initCanvas() {
+  const canvas = document.getElementById('ocean-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function mkParticle() {
+    return {
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.5 + 0.3,
+      dx: (Math.random() - 0.5) * 0.3,
+      dy: (Math.random() - 0.5) * 0.3,
+      alpha: Math.random() * 0.4 + 0.05,
+    };
+  }
+
+  function initParticles() {
+    particles = Array.from({length: 120}, mkParticle);
+  }
+
+  function draw() {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0,   '#000d1a');
+    grad.addColorStop(0.4, '#001a2e');
+    grad.addColorStop(1,   '#002b45');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // shimmer particles
+    particles.forEach(p => {
+      p.x += p.dx; p.y += p.dy;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0,245,212,${p.alpha})`;
+      ctx.fill();
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', () => { resize(); initParticles(); });
+  resize(); initParticles(); draw();
+})();
+
+/* ═══════════════════════════════════════════════════
+   FLOATING BUBBLES (DOM)
+═══════════════════════════════════════════════════ */
+(function initBubbles() {
+  const BUBBLE_COUNT = 18;
+  for (let i = 0; i < BUBBLE_COUNT; i++) {
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    const size = Math.random() * 28 + 6;
+    const left = Math.random() * 100;
+    const dur  = Math.random() * 16 + 10;
+    const dly  = Math.random() * 12;
+    const drift = (Math.random() - 0.5) * 60;
+    b.style.cssText = `
+      width: ${size}px; height: ${size}px;
+      left: ${left}%;
+      animation-duration: ${dur}s;
+      animation-delay: ${dly}s;
+      --drift: ${drift}px;
+    `;
+    document.body.appendChild(b);
+  }
+})();
+
+/* ═══════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════ */
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/* ═══════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════ */
+renderCards();
+</script>
+</body>
+</html>
