@@ -242,32 +242,6 @@
       margin: 0 auto;
       padding: 40px 20px 80px;
     }
-    .mermaid-panel {
-      margin: 0 auto 28px;
-      max-width: 720px;
-      padding: 12px;
-      background: linear-gradient(145deg, rgba(8,20,56,0.9), rgba(6,12,35,0.95));
-      border: 2px solid rgba(0,245,212,0.24);
-      border-radius: 16px;
-      box-shadow: 0 0 0 1px rgba(0,245,212,0.1) inset, 0 0 22px rgba(0,180,216,0.2);
-    }
-    .mermaid-panel img {
-      width: 100%;
-      display: block;
-      border-radius: 10px;
-      image-rendering: pixelated;
-      box-shadow: 0 0 24px rgba(0,212,184,0.25);
-    }
-    .mermaid-gallery {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      align-items: start;
-    }
-    .mermaid-gif {
-      image-rendering: auto;
-    }
-
     /* ── Section headings ────────────────────────────────── */
     .section-title {
       font-family: var(--pixel-font);
@@ -870,19 +844,6 @@
 <!-- ── Main ─────────────────────────────────────────────── -->
 <main class="container">
 
-  <section aria-label="Pixel art mermaid">
-    <div class="mermaid-gallery">
-      <div class="mermaid-panel">
-        <img src="https://github.com/user-attachments/assets/6555ed2c-7c52-4557-88be-3516d710bb88"
-             alt="Pixel-art underwater mermaid scene in a bioluminescent cave"/>
-      </div>
-      <div class="mermaid-panel">
-        <img class="mermaid-gif" src="https://github.com/user-attachments/assets/5e8cdc06-34e5-40d2-ad91-df05bfa54418"
-             alt="Animated mermaid pixel-art underwater GIF"/>
-      </div>
-    </div>
-  </section>
-
   <!-- Search -->
   <section aria-label="Target search">
     <div class="search-card">
@@ -902,7 +863,7 @@
       <div id="target-validation" class="validation-msg" aria-live="polite"></div>
       <div class="mt-16">
         <input id="api-url-input" class="search-input" type="url"
-               placeholder="https://your-osint-backend.example.com (optional)"
+               placeholder="https://your-osint-backend.example.com"
                autocomplete="off" spellcheck="false"
                aria-label="Backend API URL for live mode"/>
       </div>
@@ -912,7 +873,7 @@
       </div>
       <div class="stats-bar">
         <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
-        <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Demo mode active</div>
+        <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Backend URL required</div>
         <div class="stat-pill" id="run-count-pill"><span class="dot dot-green"></span>0 command runs</div>
         <div class="stat-pill"><span class="dot dot-pink"></span>Public profiles only</div>
       </div>
@@ -961,7 +922,7 @@
   <!-- Terminal -->
   <section aria-label="Terminal output">
     <h2 class="section-title">💻 LIVE TERMINAL</h2>
-    <p class="section-subtitle">Simulated output — plug in the real Osintgram backend for live results.</p>
+    <p class="section-subtitle">Live backend output only — set a backend API URL before running commands.</p>
     <div class="terminal-wrap">
       <div class="terminal-topbar">
         <span class="tb-dot tb-red"></span>
@@ -1080,92 +1041,6 @@ const COMMANDS = [
 ];
 
 /* ═══════════════════════════════════════════════════════════
-   DEMO OUTPUT
-═══════════════════════════════════════════════════════════ */
-const DEMO = {
-  info: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command info`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Account Info ]'],
-    ['result', `  Username    :  @${t}`],
-    ['result', `  Full Name   :  ${cap(t)} (demo)`],
-    ['result', `  Followers   :  12,847`],
-    ['result', `  Following   :  934`],
-    ['result', `  Posts       :  218`],
-    ['result', `  Private     :  No`],
-    ['result', `  Verified    :  No`],
-    ['result', `  Bio         :  🌊 Ocean explorer | Diving into the deep`],
-    ['success', `[✔] Done`],
-  ],
-  followers: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command followers`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Followers ]'],
-    ['result', `  @deepsea_dan        (ID: 10023881)`],
-    ['result', `  @mermaid_marina     (ID: 10481920)`],
-    ['result', `  @coral_queen        (ID: 20398471)`],
-    ['result', `  @wave_rider_99      (ID: 30012847)`],
-    ['result', `  @ocean_photography  (ID: 48291038)`],
-    ['dim',    `  … and 12,842 more`],
-    ['success', `[✔] 12,847 followers found`],
-  ],
-  photos: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command photos`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Downloading Photos ]'],
-    ['info',   `  Scanning ${t}'s media…`],
-    ['result', `  [1/5]  output/photo_1.jpg   ██████████ 100%`],
-    ['result', `  [2/5]  output/photo_2.jpg   ██████████ 100%`],
-    ['result', `  [3/5]  output/photo_3.jpg   ██████████ 100%`],
-    ['result', `  [4/5]  output/photo_4.jpg   ██████████ 100%`],
-    ['result', `  [5/5]  output/photo_5.jpg   ██████████ 100%`],
-    ['dim',    `  (showing 5 of 218 — demo mode)`],
-    ['success', `[✔] 5 photos saved to ./output/`],
-  ],
-  hashtags: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command hashtags`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Top Hashtags ]'],
-    ['result', `  #ocean           42 uses`],
-    ['result', `  #underwater      38 uses`],
-    ['result', `  #diving          31 uses`],
-    ['result', `  #marinelife      27 uses`],
-    ['result', `  #coral           19 uses`],
-    ['result', `  #deepblue        15 uses`],
-    ['success', `[✔] 6 unique hashtags extracted`],
-  ],
-  likes: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command likes`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Engagement — Likes ]'],
-    ['result', `  Total posts   :  218`],
-    ['result', `  Total likes   :  487,301`],
-    ['result', `  Avg per post  :  2,235`],
-    ['result', `  Peak post     :  14,820 likes`],
-    ['success', `[✔] Done`],
-  ],
-  comments: (t) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command comments`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  '[ Engagement — Comments ]'],
-    ['result', `  Total posts    :  218`],
-    ['result', `  Total comments :  23,847`],
-    ['result', `  Avg per post   :  109`],
-    ['success', `[✔] Done`],
-  ],
-  _default: (t, cmd) => [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${t} --command ${cmd}`],
-    ['dim',    '════════════════════════════════════════════════'],
-    ['label',  `[ ${cmd} ]`],
-    ['info',   `  Fetching data for @${t}…`],
-    ['result', `  [demo] This is a UI simulation and does not query Instagram.`],
-    ['result', `  Results depend on privacy settings and API rate limits.`],
-    ['warn',   `  [!] Demo mode — no real data returned`],
-    ['success', `[✔] Command completed (simulated)`],
-  ],
-};
-
-/* ═══════════════════════════════════════════════════════════
    RENDER CARDS
 ═══════════════════════════════════════════════════════════ */
 function renderCards() {
@@ -1225,7 +1100,6 @@ const FAVORITES_STORAGE_KEY = 'oceangramFavoriteCommands';
 const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
 const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
-const LIVE_COMPLETION_TYPES = new Set(['result', 'success']);
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
@@ -1298,7 +1172,7 @@ function setLiveModePill() {
   const live = !!getApiBaseUrl();
   pill.innerHTML = live
     ? '<span class="dot dot-green"></span>Live mode active'
-    : '<span class="dot dot-yellow"></span>Demo mode active';
+    : '<span class="dot dot-yellow"></span>Backend URL required';
 }
 
 function readStoredApiBaseUrl() {
@@ -1401,7 +1275,14 @@ function getValidatedTarget() {
 
 async function fetchLiveLines(target, cmd) {
   const base = getApiBaseUrl();
-  if (!base) return null;
+  if (!base) {
+    return [
+      ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+      ['dim', '════════════════════════════════════════════════'],
+      ['warn', '[!] No backend API URL configured'],
+      ['info', '  Set Backend API URL, then run the command again.'],
+    ];
+  }
   const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
@@ -1415,7 +1296,7 @@ async function fetchLiveLines(target, cmd) {
       ['dim', '════════════════════════════════════════════════'],
       ['label', `[ ${cmd} — live ]`],
       ...payload,
-      ['success', '[✔] Live command completed'],
+      ['success', '[✔] Command completed'],
     ];
   } catch (err) {
     const msg = err?.name === 'AbortError' ? 'request timed out' : 'connection error';
@@ -1423,17 +1304,11 @@ async function fetchLiveLines(target, cmd) {
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
       ['warn', `[!] Live request failed: ${msg}`],
-      ['info', '  Falling back to demo output.'],
+      ['info', '  No fallback output is enabled.'],
     ];
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function selectCommandLines(liveLines, demoLines) {
-  if (!liveLines) return demoLines;
-  const hasUsableLiveResults = liveLines.some(([type]) => LIVE_COMPLETION_TYPES.has(type));
-  return hasUsableLiveResults ? liveLines : [...liveLines, ...demoLines];
 }
 
 function getVisibleCommands() {
@@ -1645,9 +1520,7 @@ async function runCommand(c, providedTarget = null) {
   document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
   const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
   if (el) el.classList.add('active-card');
-  const liveLines = await fetchLiveLines(target, c.name);
-  const demoLines = (DEMO[c.id] ? DEMO[c.id](target) : DEMO._default(target, c.name));
-  const lines = selectCommandLines(liveLines, demoLines);
+  const lines = await fetchLiveLines(target, c.name);
   registerCommandRun(c, target);
   addRecentTarget(target);
   addRecentCommand(c.id, target);
@@ -2071,11 +1944,6 @@ document.head.appendChild(KF);
   resize();
   draw();
 })();
-
-/* ═══════════════════════════════════════════════════════════
-   HELPERS
-═══════════════════════════════════════════════════════════ */
-function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 /* ═══════════════════════════════════════════════════════════
    INIT

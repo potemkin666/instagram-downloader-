@@ -2,7 +2,7 @@
 
 An ocean-themed GitHub Pages UI for Instagram OSINT reconnaissance, inspired by [Osintgram](https://github.com/Datalux/Osintgram).
 
-## 🌐 Live Demo
+## 🌐 Live UI
 
 GitHub Pages is enabled for this repository.
 
@@ -16,12 +16,11 @@ https://<your-username>.github.io/instagram-downloader-/
 
 - **Ocean-themed UI** — deep-sea gradient, animated bubbles, shimmering particle canvas, and SVG waves
 - **20 OSINT command cards** — organised by category (Profile, Social, Content, Engagement, Contact)
-- **Interactive terminal panel** — click any card to see simulated command output with typewriter animation
+- **Interactive terminal panel** — click any card to see live command output with typewriter animation
 - **Optional live mode** — set a backend API URL in the UI to fetch real command results
 - **Command search + visible-runner** — search command cards and run all currently visible commands in sequence
 - **Input validation + recent history** — validate Instagram usernames and quickly rerun recent command/target pairs
 - **Terminal utilities** — clear terminal output and export terminal logs to `.txt`
-- **Mermaid media gallery** — includes static and animated mermaid pixel-art panels
 - **Favorites + favorites tab** — star frequently used commands and filter to favorites only
 - **Sortable command grid** — order commands by default, name, category, or most-used
 - **API health indicator** — check backend reachability from the UI with visible status
@@ -72,7 +71,7 @@ Supported response formats:
 - `{ "output": "line 1\nline 2\nline 3" }`
 - `{ "output": ["line 1", "line 2"] }`
 
-If no backend URL is set, or the live request fails, the UI falls back to demo output.
+If no backend URL is set, or the live request fails, the UI shows an explicit error and does not use fallback output.
 
 ## ⚠️ Disclaimer
 
