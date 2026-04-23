@@ -898,7 +898,7 @@
       <div id="target-validation" class="validation-msg" aria-live="polite"></div>
       <div class="mt-16">
         <input id="api-url-input" class="search-input" type="url"
-               placeholder="https://your-osint-backend.example.com"
+               placeholder="https://your-osint-backend.example.com (required)"
                autocomplete="off" spellcheck="false"
                aria-label="Backend API URL for live mode"/>
       </div>
@@ -1464,7 +1464,13 @@ function looksLikeMediaUrl(url) {
     const host = new URL(raw).hostname.toLowerCase();
     if (host.includes('instagram.com') || host.includes('cdninstagram.com')) return true;
   } catch (_) {}
-  return u.includes('profile');
+  return false;
+}
+
+function hasMeaningfulOutput(payload) {
+  return Array.isArray(payload)
+    && payload.length > 0
+    && payload.some(([, text]) => String(text || '').trim().length > 0);
 }
 
 function extractMediaUrlFromLines(lines, commandName = '') {
@@ -1638,8 +1644,7 @@ async function fetchLiveLines(target, cmd) {
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
       const data = await res.json();
       const payload = parseLiveOutputLines(data);
-      const hasMeaningfulPayload = payload.length > 0 && payload.some(([, text]) => String(text || '').trim().length > 0);
-      if (!hasMeaningfulPayload) {
+      if (!hasMeaningfulOutput(payload)) {
         return [
           ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
           ['dim', '════════════════════════════════════════════════'],
