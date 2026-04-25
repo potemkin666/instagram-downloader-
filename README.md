@@ -5,8 +5,8 @@ OceanGram is a static, browser-based UI for Instagram OSINT workflows. It presen
 ## What is in this repository
 
 - A static frontend served from `index.html`
-- Source modules in `/home/runner/work/instagram-downloader-/instagram-downloader-/src`
-- A bundled browser asset at `/home/runner/work/instagram-downloader-/instagram-downloader-/assets/app.bundle.js`
+- Source modules in `src/`
+- A bundled browser asset at `assets/app.bundle.js`
 
 ## What is not in this repository
 
@@ -53,7 +53,7 @@ assets/app.bundle.js
 
 ## Local usage
 
-After building, open `/home/runner/work/instagram-downloader-/instagram-downloader-/index.html` in a browser, or serve the repository root with any static file server.
+After building, open `index.html` in a browser, or serve the repository root with any static file server.
 
 Typical flow:
 
