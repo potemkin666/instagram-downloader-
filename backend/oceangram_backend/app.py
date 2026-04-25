@@ -141,6 +141,14 @@ class AuthenticationError(AdapterError):
     status_code = 401
 
 
+def _public_error_message(exc: AdapterError) -> str:
+    if isinstance(exc, ConfigurationError):
+        return "Backend bridge is not fully configured yet."
+    if isinstance(exc, AuthenticationError):
+        return "Backend rejected the provided Instagram credentials or cookies."
+    return "Backend bridge request failed."
+
+
 class CommandTemplateAdapter:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -411,7 +419,8 @@ def create_app(config: AppConfig | None = None) -> Flask:
             profile_cache.clear()
             command_cache.clear()
         except AdapterError as exc:
-            return _json_response({"ok": False, "message": str(exc)}, exc.status_code)
+            app.logger.warning("Backend login failed: %s", exc)
+            return _json_response({"ok": False, "message": _public_error_message(exc)}, exc.status_code)
         response = _json_response({"ok": True, **_session_payload(session)})
         response.set_cookie(
             cfg.session_cookie_name,
@@ -429,7 +438,8 @@ def create_app(config: AppConfig | None = None) -> Flask:
         try:
             adapter.logout(session)
         except AdapterError as exc:
-            return _json_response({"ok": False, "message": str(exc)}, exc.status_code)
+            app.logger.warning("Backend logout failed: %s", exc)
+            return _json_response({"ok": False, "message": _public_error_message(exc)}, exc.status_code)
         if session:
             session_store.delete(session.session_id)
         profile_cache.clear()
@@ -452,7 +462,8 @@ def create_app(config: AppConfig | None = None) -> Flask:
         try:
             payload = adapter.run_command(session, target, command_name)
         except AdapterError as exc:
-            return _json_response({"ok": False, "message": str(exc)}, exc.status_code)
+            app.logger.warning("Backend command failed for %s/%s: %s", target, command_name, exc)
+            return _json_response({"ok": False, "message": _public_error_message(exc)}, exc.status_code)
         command_cache.set(cache_key, payload)
         return _json_response(payload)
 
@@ -471,7 +482,8 @@ def create_app(config: AppConfig | None = None) -> Flask:
         try:
             payload = adapter.profile_summary(session, target)
         except AdapterError as exc:
-            return _json_response({"ok": False, "message": str(exc)}, exc.status_code)
+            app.logger.warning("Backend profile summary failed for %s: %s", target, exc)
+            return _json_response({"ok": False, "message": _public_error_message(exc)}, exc.status_code)
         profile_cache.set(cache_key, payload)
         return _json_response(payload)
 
