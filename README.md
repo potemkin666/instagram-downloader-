@@ -16,6 +16,7 @@ OceanGram is a static browser UI for Instagram reconnaissance workflows plus an 
 - minimum identity verification via backend profile or command endpoints
 - recent targets, recent commands, local response caching, and batch execution
 - backend auth session panel with sign-in, sign-out, and session refresh actions
+- structured JSON/table rendering for metadata-rich command output
 - offline-aware action gating and toast-based UI feedback
 
 ## Backend features
@@ -28,6 +29,8 @@ OceanGram is a static browser UI for Instagram reconnaissance workflows plus an 
 - `GET /api/profile-summary?target=<username>`
 - compatibility aliases: `GET /api/profile`, `GET /api/identity`
 - HTTP-only backend session cookie, in-memory server-side session records, and TTL-based response caching
+- resumable parallel media downloads when the wrapped command returns a `downloads` array
+- structured metadata passthrough via `metadata` and `metadata_tables`
 - configurable command templates so the service can wrap Osintgram or a similar authenticated scraper without changing the frontend architecture
 
 ## Frontend setup
@@ -65,7 +68,26 @@ Optional hooks:
 - `OCEANGRAM_LOGOUT_TEMPLATE`
 - `OCEANGRAM_PROFILE_TEMPLATE`
 
+Optional download tuning:
+
+- `OCEANGRAM_DOWNLOAD_ROOT`
+- `OCEANGRAM_DOWNLOAD_POOL_SIZE`
+- `OCEANGRAM_DOWNLOAD_TIMEOUT_SECONDS`
+
 See `backend/README.md` for more detail.
+
+## CLI usage
+
+The backend package also installs a terminal client:
+
+```bash
+cd instagram-downloader-/backend
+oceangram-cli --target user followers
+oceangram-cli --target user metadata --json
+oceangram-cli --target user photos --auth-username mylogin --auth-password 'secret'
+```
+
+Use `--profile-summary` to fetch the identity/profile summary instead of running a command.
 
 ## Docker
 

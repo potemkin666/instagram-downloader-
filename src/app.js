@@ -81,7 +81,7 @@ const STORAGE_KEYS = {
   functionalSettings: 'oceangramFunctionalSettings',
   lastMediaUrl: 'oceangramLastMediaUrl',
 };
-const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
+const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success', 'error', 'json', 'table']);
 // Keep a fallback path for older browsers that lack AbortController-based request cancellation.
 const SUPPORTS_ABORT_CONTROLLER = 'AbortController' in window;
 const API_TIMEOUT_MS = 15000;
@@ -209,6 +209,15 @@ function getToastTitle(kind) {
   return 'UPDATE';
 }
 
+function formatCommandCountLabel() {
+  return `${COMMANDS.length} commands available`;
+}
+
+function renderCommandCount() {
+  const pill = document.getElementById('command-count-pill');
+  if (pill) pill.innerHTML = `<span class="dot dot-green"></span>${formatCommandCountLabel()}`;
+}
+
 function showToast(message, { kind = 'info', title = getToastTitle(kind), durationMs = TOAST_DURATION_MS } = {}) {
   const region = document.getElementById('toast-region');
   const text = String(message || '').trim();
@@ -246,6 +255,78 @@ function canUseLiveBackend({ notify = false, message = OFFLINE_MESSAGE } = {}) {
   setRequestStatusPill('warn', 'Offline — reconnect for live commands');
   if (notify) showToast(message, { kind: 'warn', title: 'OFFLINE' });
   return false;
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function tryParseJsonString(value) {
+  const text = String(value || '').trim();
+  if (!text || !/^[\[{]/.test(text)) return null;
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return null;
+  }
+}
+
+function stringifyStructuredValue(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (_) {
+    return String(value);
+  }
+}
+
+function toTableText(rows, columns = []) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const safeColumns = Array.isArray(columns) && columns.length
+    ? columns.map(column => String(column))
+    : Array.from(new Set(safeRows.flatMap(row => isPlainObject(row) ? Object.keys(row) : [])));
+  if (!safeColumns.length) return '';
+  const normalizedRows = safeRows.map(row => safeColumns.reduce((acc, column) => {
+    const value = isPlainObject(row) ? row[column] : '';
+    acc[column] = value === null || typeof value === 'undefined'
+      ? ''
+      : isPlainObject(value) || Array.isArray(value)
+        ? stringifyStructuredValue(value)
+        : String(value);
+    return acc;
+  }, {}));
+  const widths = safeColumns.map(column => Math.max(
+    column.length,
+    ...normalizedRows.map(row => String(row[column] || '').split('\n').reduce((max, line) => Math.max(max, line.length), 0)),
+  ));
+  const separator = widths.map(width => '-'.repeat(width)).join('-|-');
+  const header = safeColumns.map((column, index) => column.padEnd(widths[index], ' ')).join(' | ');
+  const body = normalizedRows.flatMap(row => {
+    const cellLines = safeColumns.map(column => String(row[column] || '').split('\n'));
+    const height = Math.max(...cellLines.map(lines => lines.length), 1);
+    return Array.from({ length: height }, (_, lineIndex) => safeColumns
+      .map((column, columnIndex) => (cellLines[columnIndex][lineIndex] || '').padEnd(widths[columnIndex], ' '))
+      .join(' | '));
+  });
+  return [header, separator, ...body].join('\n');
+}
+
+function appendStructuredValueLines(lines, value, { title = '', preferredType = 'json' } = {}) {
+  if (title) lines.push(['label', title]);
+  if (Array.isArray(value) && value.every(item => isPlainObject(item))) {
+    const tableText = toTableText(value);
+    if (tableText) {
+      lines.push(['table', tableText]);
+      return;
+    }
+  }
+  if (isPlainObject(value) && Array.isArray(value.rows)) {
+    const tableText = toTableText(value.rows, value.columns);
+    if (tableText) {
+      lines.push(['table', tableText]);
+      return;
+    }
+  }
+  lines.push([preferredType, stringifyStructuredValue(value)]);
 }
 
 function createEmptyAuthSessionState(overrides = {}) {
@@ -1317,27 +1398,69 @@ function isEditableElement(target) {
 }
 
 function parseLiveOutputLines(data) {
-  if (Array.isArray(data?.lines) && data.lines.every(l =>
-    Array.isArray(l)
-    && l.length === 2
-    && typeof l[0] === 'string'
-    && LIVE_LINE_TYPES.has(l[0])
-    && typeof l[1] === 'string'
-  )) {
-    return data.lines;
+  const lines = [];
+
+  if (Array.isArray(data?.lines)) {
+    data.lines.forEach(line => {
+      if (!Array.isArray(line) || line.length !== 2 || typeof line[0] !== 'string') return;
+      const type = LIVE_LINE_TYPES.has(line[0]) ? line[0] : 'result';
+      const value = line[1];
+      if (typeof value === 'string') {
+        const parsed = type === 'result' ? tryParseJsonString(value) : null;
+        if (parsed !== null) lines.push(['json', stringifyStructuredValue(parsed)]);
+        else lines.push([type, value.length ? value : ' ']);
+        return;
+      }
+      if (value && typeof value === 'object') {
+        appendStructuredValueLines(lines, value, { preferredType: 'json' });
+      } else {
+        lines.push([type, String(value ?? ' ')]);
+      }
+    });
   }
 
   let rawOutput = data?.output;
   if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') {
     rawOutput = data?.result;
   }
-  if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') return [];
+  if ((typeof rawOutput !== 'undefined' && rawOutput !== null && rawOutput !== '') && !lines.length) {
+    const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
+    normalized.forEach(item => {
+      if (item && typeof item === 'object') appendStructuredValueLines(lines, item, { preferredType: 'json' });
+      else {
+        const text = String(item);
+        const parsed = tryParseJsonString(text);
+        lines.push(parsed !== null ? ['json', stringifyStructuredValue(parsed)] : ['result', text.length ? text : ' ']);
+      }
+    });
+  }
 
-  const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
-  return normalized.map(s => {
-    const text = String(s);
-    return ['result', text.length ? text : ' '];
-  });
+  if (Array.isArray(data?.metadata_tables)) {
+    data.metadata_tables.forEach((table, index) => {
+      const title = table?.title ? `Metadata table ${index + 1}: ${table.title}` : `Metadata table ${index + 1}`;
+      appendStructuredValueLines(lines, table, { title, preferredType: 'table' });
+    });
+  }
+
+  if (typeof data?.metadata !== 'undefined' && data?.metadata !== null) {
+    appendStructuredValueLines(lines, data.metadata, { title: 'Structured metadata', preferredType: 'json' });
+  }
+
+  if (isPlainObject(data?.download_summary)) {
+    const summaryRows = [
+      { metric: 'output_dir', value: data.download_summary.output_dir || '' },
+      { metric: 'total', value: data.download_summary.total ?? '' },
+      { metric: 'downloaded', value: data.download_summary.downloaded ?? '' },
+      { metric: 'skipped', value: data.download_summary.skipped ?? '' },
+      { metric: 'failed', value: data.download_summary.failed ?? '' },
+    ];
+    appendStructuredValueLines(lines, summaryRows, { title: 'Download summary', preferredType: 'table' });
+    if (Array.isArray(data.download_summary.items) && data.download_summary.items.length) {
+      appendStructuredValueLines(lines, data.download_summary.items, { title: 'Download items', preferredType: 'table' });
+    }
+  }
+
+  return lines;
 }
 
 function setTargetValidation(message = '') {
@@ -2077,7 +2200,7 @@ function startScan() {
       ['result',  `  Checking if account is public…`],
       ['success', `  [✔] @${target} is accessible`],
       ['info',    `  Ready — click any command card to begin your dive.`],
-      ['dim',     `  ── 20 commands available ──`],
+      ['dim',     `  ── ${COMMANDS.length} commands available ──`],
     ]);
     document.querySelector('.commands-grid').scrollIntoView({ behavior:'smooth', block:'start' });
   }, 1200);
@@ -2339,6 +2462,7 @@ updateCacheCountPill();
 updateMediaButtons();
 renderProfileSummary();
 renderAuthSessionState();
+renderCommandCount();
 resetTerminal();
 renderCards();
 updateConnectivityState();

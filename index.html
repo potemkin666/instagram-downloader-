@@ -966,6 +966,17 @@
     .t-error   { color:#ff5f57;           }
     .t-success { color:#28c840;           text-shadow:0 0 6px rgba(40,200,64,0.4); }
     .t-dim     { color:rgba(106,176,204,0.4); }
+    .t-json,
+    .t-table   {
+      color:var(--pearl);
+      white-space:pre-wrap;
+      display:block;
+      padding-left: 12px;
+      border-left: 2px solid rgba(0,245,212,0.18);
+      margin: 6px 0;
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
     .t-cursor  {
       display:inline-block;
       width:9px; height:16px;
@@ -1328,7 +1339,7 @@
         </div>
       </div>
       <div class="stats-bar">
-        <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
+        <div class="stat-pill" id="command-count-pill"><span class="dot dot-green"></span>22 commands available</div>
         <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Backend URL required</div>
         <div class="stat-pill" id="connectivity-pill"><span class="dot dot-green"></span>Online</div>
         <div class="stat-pill" id="run-count-pill"><span class="dot dot-green"></span>0 command runs</div>

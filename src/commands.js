@@ -8,6 +8,8 @@ export const COMMANDS = [
   { id:'wcommented',  name:'wcommented',   icon:'💬', cat:'Social',     desc:'Get a list of users who commented on the target\'s posts.' },
   { id:'photos',      name:'photos',       icon:'📸', cat:'Content',    desc:'Download all public photos posted by the target to an output folder.' },
   { id:'stories',     name:'stories',      icon:'🎞️', cat:'Content',    desc:'Download the target\'s currently active stories.' },
+  { id:'metadata',    name:'metadata',     icon:'🧬', cat:'Content',    desc:'Fetch structured JSON metadata for media, including EXIF-like fields when available.' },
+  { id:'locations',   name:'locations',    icon:'🗺️', cat:'Content',    desc:'Extract structured location coordinates and place metadata from available posts or stories.' },
   { id:'captions',    name:'captions',     icon:'✍️', cat:'Content',    desc:'Collect captions from all of the target\'s posts.' },
   { id:'photodes',    name:'photodes',     icon:'🗒️', cat:'Content',    desc:'Get the descriptions and alt-text of the target\'s photos.' },
   { id:'mediatype',   name:'mediatype',    icon:'🎬', cat:'Content',    desc:'Classify each post as a photo or video.' },

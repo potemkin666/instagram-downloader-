@@ -279,7 +279,11 @@ class CommandTemplateAdapter:
 
     def _download_directory(self, target: str, command: str, payload: dict[str, Any]) -> Path:
         override = str(payload.get("download_dir") or "").strip()
-        base_root = Path(override) if override else Path(self.config.download_root)
+        base_root = Path(self.config.download_root)
+        if override:
+            safe_parts = [re.sub(r"[^A-Za-z0-9._-]+", "_", part) for part in Path(override).parts if part not in {"", ".", "..", "/"}]
+            if safe_parts:
+                base_root = base_root.joinpath(*safe_parts)
         safe_target = re.sub(r"[^A-Za-z0-9._-]+", "_", target) or "target"
         safe_command = re.sub(r"[^A-Za-z0-9._-]+", "_", command) or "command"
         return base_root / safe_target / safe_command
