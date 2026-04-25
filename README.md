@@ -78,7 +78,7 @@ To run commands against a real backend from the UI:
 2. In OceanGram, paste the backend base URL into the **Backend / personal-login bridge API URL** field.
 3. Click any command card.
 
-That API can be a tiny local bridge powered by your own normal personal Instagram login/session; OceanGram does not require a business or creator account-specific flow in the UI.
+That API can be a lightweight local bridge powered by your own normal personal Instagram login/session; OceanGram does not require a business or creator account-specific flow in the UI.
 
 If you reuse the same bridge often, you can save the current URL as the UI default and restore it later with the built-in default-URL controls. The URL field is also normalized and validated on blur, not only when you manually trigger a health check.
 

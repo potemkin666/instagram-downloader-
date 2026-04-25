@@ -94,11 +94,13 @@ const MAX_INSTAGRAM_USERNAME_LENGTH = 30;
 const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
+// Maximum number of command results to fetch in parallel during RUN VISIBLE batches.
 const BATCH_FETCH_CONCURRENCY = 3;
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5000;
 const MAX_RATE_LIMIT_BACKOFF_MS = 30000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
 const DEFAULT_APP_CONFIG = { defaultApiUrl: '' };
+const MISSING_API_URL_MESSAGE = 'Set backend or personal-login bridge URL first';
 // Cap cache at 50 entries to keep localStorage bounded while still retaining a useful working set of recent commands.
 const MAX_LIVE_CACHE_ITEMS = 50;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
@@ -255,6 +257,10 @@ function normalizeApiUrlValue(value) {
 
 function readStoredApiBaseUrl() {
   return normalizeApiUrlValue(stateStore.getString(STORAGE_KEYS.apiUrl, ''));
+}
+
+function getInitialApiUrl() {
+  return readStoredApiBaseUrl() || normalizeApiUrlValue(appConfig.defaultApiUrl);
 }
 
 function persistApiBaseUrl(value) {
@@ -731,7 +737,7 @@ function preloadImage(url) {
 }
 
 function validateApiBaseUrl(base) {
-  if (!base) return 'Set backend or personal-login bridge URL first';
+  if (!base) return MISSING_API_URL_MESSAGE;
   try {
     const parsed = new URL(base);
     if (!['http:', 'https:'].includes(parsed.protocol)) return 'Use http:// or https:// for the backend/bridge URL';
@@ -974,7 +980,7 @@ async function fetchLiveLines(target, cmd) {
       ['info', result.type === 'config'
         ? '  Update Backend API URL, then run the command again.'
         : result.type === 'rate-limit'
-          ? '  Backend asked us to slow down. OceanGram already backed off once before giving up.'
+          ? '  Rate limit exceeded. An automatic retry was attempted, but the limit still persists.'
         : result.type === 'empty'
           ? '  Backend responded, but no usable output was returned.'
           : autoRetryEnabled
@@ -1745,7 +1751,7 @@ appConfig = readStoredAppConfig();
 initNextLevelAesthetics();
 const apiInput = document.getElementById('api-url-input');
 if (apiInput) {
-  apiInput.value = readStoredApiBaseUrl() || normalizeApiUrlValue(appConfig.defaultApiUrl);
+  apiInput.value = getInitialApiUrl();
   apiInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
