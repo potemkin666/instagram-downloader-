@@ -65,15 +65,18 @@ function filterCards(btn) {
    TERMINAL
 ═══════════════════════════════════════════════════════════ */
 let _typing = false;
-const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
-const FAVORITES_STORAGE_KEY = 'oceangramFavoriteCommands';
-const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
-const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
-const RECENT_COMMANDS_STORAGE_KEY = 'oceangramRecentCommands';
-const COMMAND_UI_STATE_STORAGE_KEY = 'oceangramCommandUiState';
-const LIVE_CACHE_STORAGE_KEY = 'oceangramLiveOutputCache';
-const FUNCTIONAL_SETTINGS_STORAGE_KEY = 'oceangramFunctionalSettings';
-const LAST_MEDIA_URL_STORAGE_KEY = 'oceangramLastMediaUrl';
+const STORAGE_KEYS = {
+  apiUrl: 'oceangramApiBaseUrl',
+  appConfig: 'oceangramAppConfig',
+  favorites: 'oceangramFavoriteCommands',
+  runCounts: 'oceangramCommandRunCounts',
+  recentTargets: 'oceangramRecentTargets',
+  recentCommands: 'oceangramRecentCommands',
+  commandUiState: 'oceangramCommandUiState',
+  liveCache: 'oceangramLiveOutputCache',
+  functionalSettings: 'oceangramFunctionalSettings',
+  lastMediaUrl: 'oceangramLastMediaUrl',
+};
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
 // Keep a fallback path for older browsers that lack AbortController-based request cancellation.
 const SUPPORTS_ABORT_CONTROLLER = 'AbortController' in window;
@@ -95,6 +98,7 @@ const BATCH_FETCH_CONCURRENCY = 3;
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5000;
 const MAX_RATE_LIMIT_BACKOFF_MS = 30000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
+const DEFAULT_APP_CONFIG = { defaultApiUrl: '' };
 // Cap cache at 50 entries to keep localStorage bounded while still retaining a useful working set of recent commands.
 const MAX_LIVE_CACHE_ITEMS = 50;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
@@ -128,9 +132,61 @@ let autoRetryEnabled = DEFAULT_FUNCTIONAL_SETTINGS.autoRetry;
 let allowContactCommands = DEFAULT_FUNCTIONAL_SETTINGS.allowContact;
 let batchDelayMs = DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
 let lastMediaUrl = '';
+let appConfig = { ...DEFAULT_APP_CONFIG };
 let profileSummaryState = createEmptyProfileSummaryState();
 let activeIdentityRequestId = 0;
 let identityRefreshDebounceId = null;
+
+function createStateStore(storage = window.localStorage) {
+  const safeGet = key => {
+    try { return storage.getItem(key); }
+    catch (_) { return null; }
+  };
+  const safeSet = (key, value) => {
+    try {
+      storage.setItem(key, value);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+  const safeRemove = key => {
+    try {
+      storage.removeItem(key);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+  return {
+    getString(key, fallback = '') {
+      const value = safeGet(key);
+      return typeof value === 'string' ? value : fallback;
+    },
+    setString(key, value) {
+      const normalized = String(value ?? '').trim();
+      if (!normalized) return safeRemove(key);
+      return safeSet(key, normalized);
+    },
+    getJson(key, fallback) {
+      const raw = safeGet(key);
+      if (!raw) return fallback;
+      try {
+        return JSON.parse(raw);
+      } catch (_) {
+        return fallback;
+      }
+    },
+    setJson(key, value) {
+      return safeSet(key, JSON.stringify(value));
+    },
+    remove(key) {
+      return safeRemove(key);
+    },
+  };
+}
+
+const stateStore = createStateStore();
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -192,42 +248,49 @@ function setLiveModePill() {
   pill.innerHTML = '<span class="dot dot-green"></span>Live mode active';
 }
 
+function normalizeApiUrlValue(value) {
+  const raw = String(value || '').trim();
+  return raw ? raw.replace(/\/+$/, '') : '';
+}
+
 function readStoredApiBaseUrl() {
-  try { return localStorage.getItem(API_URL_STORAGE_KEY) || ''; }
-  catch (_) { return ''; }
+  return normalizeApiUrlValue(stateStore.getString(STORAGE_KEYS.apiUrl, ''));
 }
 
 function persistApiBaseUrl(value) {
-  try {
-    if (value) localStorage.setItem(API_URL_STORAGE_KEY, value);
-    else localStorage.removeItem(API_URL_STORAGE_KEY);
-  } catch (_) {}
+  stateStore.setString(STORAGE_KEYS.apiUrl, normalizeApiUrlValue(value));
 }
 
 function readStoredJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw);
-  } catch (_) {
-    return fallback;
-  }
+  return stateStore.getJson(key, fallback);
 }
 
 function persistJson(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (_) {}
+  stateStore.setJson(key, value);
+}
+
+function readStoredAppConfig() {
+  const saved = readStoredJson(STORAGE_KEYS.appConfig, {});
+  if (!saved || typeof saved !== 'object') return { ...DEFAULT_APP_CONFIG };
+  return {
+    defaultApiUrl: normalizeApiUrlValue(saved.defaultApiUrl),
+  };
+}
+
+function persistAppConfig() {
+  persistJson(STORAGE_KEYS.appConfig, {
+    defaultApiUrl: normalizeApiUrlValue(appConfig.defaultApiUrl),
+  });
 }
 
 function initStoredState() {
-  const favoriteIds = readStoredJson(FAVORITES_STORAGE_KEY, []);
+  const favoriteIds = readStoredJson(STORAGE_KEYS.favorites, []);
   favoriteCommandIds = new Set(Array.isArray(favoriteIds) ? favoriteIds : []);
-  const counts = readStoredJson(RUN_COUNT_STORAGE_KEY, {});
+  const counts = readStoredJson(STORAGE_KEYS.runCounts, {});
   commandRunCounts = counts && typeof counts === 'object' ? counts : {};
-  const targets = readStoredJson(RECENT_TARGETS_STORAGE_KEY, []);
+  const targets = readStoredJson(STORAGE_KEYS.recentTargets, []);
   recentTargets = Array.isArray(targets) ? targets.slice(0, MAX_RECENT_TARGETS) : [];
-  const commands = readStoredJson(RECENT_COMMANDS_STORAGE_KEY, []);
+  const commands = readStoredJson(STORAGE_KEYS.recentCommands, []);
   recentCommands = Array.isArray(commands)
     ? commands
       .filter(item => item && typeof item.commandId === 'string' && typeof item.target === 'string')
@@ -236,23 +299,23 @@ function initStoredState() {
 }
 
 function persistFavorites() {
-  persistJson(FAVORITES_STORAGE_KEY, Array.from(favoriteCommandIds));
+  persistJson(STORAGE_KEYS.favorites, Array.from(favoriteCommandIds));
 }
 
 function persistRunCounts() {
-  persistJson(RUN_COUNT_STORAGE_KEY, commandRunCounts);
+  persistJson(STORAGE_KEYS.runCounts, commandRunCounts);
 }
 
 function persistRecentTargets() {
-  persistJson(RECENT_TARGETS_STORAGE_KEY, recentTargets);
+  persistJson(STORAGE_KEYS.recentTargets, recentTargets);
 }
 
 function persistRecentCommands() {
-  persistJson(RECENT_COMMANDS_STORAGE_KEY, recentCommands);
+  persistJson(STORAGE_KEYS.recentCommands, recentCommands);
 }
 
 function persistCommandUiState() {
-  persistJson(COMMAND_UI_STATE_STORAGE_KEY, {
+  persistJson(STORAGE_KEYS.commandUiState, {
     category: currentCategory,
     search: commandSearchText,
     sort: sortMode,
@@ -260,7 +323,7 @@ function persistCommandUiState() {
 }
 
 function readStoredCommandUiState() {
-  const state = readStoredJson(COMMAND_UI_STATE_STORAGE_KEY, {});
+  const state = readStoredJson(STORAGE_KEYS.commandUiState, {});
   if (!state || typeof state !== 'object') return { ...DEFAULT_COMMAND_UI_STATE };
   return {
     category: COMMAND_CATEGORIES.has(state.category) ? state.category : DEFAULT_COMMAND_UI_STATE.category,
@@ -282,7 +345,7 @@ function isContactCommand(command) {
 }
 
 function readStoredFunctionalSettings() {
-  const saved = readStoredJson(FUNCTIONAL_SETTINGS_STORAGE_KEY, {});
+  const saved = readStoredJson(STORAGE_KEYS.functionalSettings, {});
   if (!saved || typeof saved !== 'object') return { ...DEFAULT_FUNCTIONAL_SETTINGS };
   return {
     useCache: saved.useCache !== false,
@@ -295,7 +358,7 @@ function readStoredFunctionalSettings() {
 }
 
 function persistFunctionalSettings() {
-  persistJson(FUNCTIONAL_SETTINGS_STORAGE_KEY, {
+  persistJson(STORAGE_KEYS.functionalSettings, {
     useCache: useCacheEnabled,
     autoRetry: autoRetryEnabled,
     allowContact: allowContactCommands,
@@ -308,7 +371,7 @@ function getLiveCacheKey(target, command) {
 }
 
 function readStoredLiveCache() {
-  const parsed = readStoredJson(LIVE_CACHE_STORAGE_KEY, {});
+  const parsed = readStoredJson(STORAGE_KEYS.liveCache, {});
   return trimLiveCacheEntries(parsed && typeof parsed === 'object' ? parsed : {});
 }
 
@@ -321,7 +384,7 @@ function updateCacheCountPill() {
 
 function persistLiveCache() {
   liveResponseCache = trimLiveCacheEntries(liveResponseCache);
-  persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
+  persistJson(STORAGE_KEYS.liveCache, liveResponseCache);
   updateCacheCountPill();
 }
 
@@ -345,7 +408,7 @@ function setCachedLiveLines(target, command, lines) {
 
 function clearLiveCache() {
   liveResponseCache = {};
-  persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
+  persistJson(STORAGE_KEYS.liveCache, liveResponseCache);
   updateCacheCountPill();
   setTargetValidation('Cleared cached live command output.');
 }
@@ -364,15 +427,11 @@ function trimLiveCacheEntries(cache) {
 }
 
 function readStoredLastMediaUrl() {
-  try { return localStorage.getItem(LAST_MEDIA_URL_STORAGE_KEY) || ''; }
-  catch (_) { return ''; }
+  return stateStore.getString(STORAGE_KEYS.lastMediaUrl, '');
 }
 
 function persistLastMediaUrl(url) {
-  try {
-    if (url) localStorage.setItem(LAST_MEDIA_URL_STORAGE_KEY, url);
-    else localStorage.removeItem(LAST_MEDIA_URL_STORAGE_KEY);
-  } catch (_) {}
+  stateStore.setString(STORAGE_KEYS.lastMediaUrl, url);
 }
 
 function updateMediaButtons() {
@@ -680,6 +739,62 @@ function validateApiBaseUrl(base) {
     return 'Invalid backend or bridge URL format';
   }
   return '';
+}
+
+function renderDefaultApiConfig() {
+  const note = document.getElementById('default-api-url-note');
+  const applyBtn = document.getElementById('apply-default-api-btn');
+  const clearBtn = document.getElementById('clear-default-api-btn');
+  const savedDefault = normalizeApiUrlValue(appConfig.defaultApiUrl);
+  if (note) {
+    note.textContent = savedDefault
+      ? `Saved default API URL: ${savedDefault}`
+      : 'No default API URL saved yet.';
+  }
+  if (applyBtn) applyBtn.disabled = !savedDefault;
+  if (clearBtn) clearBtn.disabled = !savedDefault;
+}
+
+function syncApiInputState({ validateOnBlur = false } = {}) {
+  const apiInput = document.getElementById('api-url-input');
+  if (!apiInput) return { normalized: '', error: 'API input unavailable' };
+  const normalized = normalizeApiUrlValue(apiInput.value);
+  apiInput.value = normalized;
+  persistApiBaseUrl(normalized);
+  setLiveModePill();
+  scheduleApiHealthCheck();
+  scheduleIdentitySummaryRefresh();
+  const error = normalized ? validateApiBaseUrl(normalized) : '';
+  if (validateOnBlur) setTargetValidation(error);
+  return { normalized, error };
+}
+
+function saveDefaultApiUrl() {
+  const { normalized, error } = syncApiInputState({ validateOnBlur: true });
+  if (error) return;
+  appConfig.defaultApiUrl = normalized;
+  persistAppConfig();
+  renderDefaultApiConfig();
+  setTargetValidation(normalized ? 'Saved default API URL.' : 'Cleared default API URL.');
+}
+
+function applyDefaultApiUrl() {
+  const apiInput = document.getElementById('api-url-input');
+  const savedDefault = normalizeApiUrlValue(appConfig.defaultApiUrl);
+  if (!apiInput || !savedDefault) {
+    setTargetValidation('No saved default API URL yet.');
+    return;
+  }
+  apiInput.value = savedDefault;
+  syncApiInputState({ validateOnBlur: true });
+  setTargetValidation('Loaded saved default API URL.');
+}
+
+function clearDefaultApiUrl() {
+  appConfig.defaultApiUrl = '';
+  persistAppConfig();
+  renderDefaultApiConfig();
+  setTargetValidation('Cleared saved default API URL.');
 }
 
 function scheduleApiHealthCheck() {
@@ -1626,30 +1741,42 @@ Object.assign(globalThis, {
   copyCode,
 });
 
+appConfig = readStoredAppConfig();
 initNextLevelAesthetics();
 const apiInput = document.getElementById('api-url-input');
 if (apiInput) {
-  apiInput.value = readStoredApiBaseUrl();
+  apiInput.value = readStoredApiBaseUrl() || normalizeApiUrlValue(appConfig.defaultApiUrl);
   apiInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      syncApiInputState({ validateOnBlur: true });
       apiClient.checkApiHealth();
     }
   });
   apiInput.addEventListener('change', () => {
-    const normalized = getApiBaseUrl();
-    apiInput.value = normalized;
-    persistApiBaseUrl(normalized);
-    setLiveModePill();
-    scheduleApiHealthCheck();
-    scheduleIdentitySummaryRefresh();
+    syncApiInputState({ validateOnBlur: false });
   });
   apiInput.addEventListener('input', () => {
-    persistApiBaseUrl(getApiBaseUrl());
+    persistApiBaseUrl(apiInput.value);
     setLiveModePill();
     scheduleApiHealthCheck();
     scheduleIdentitySummaryRefresh();
   });
+  apiInput.addEventListener('blur', () => {
+    syncApiInputState({ validateOnBlur: true });
+  });
+}
+const saveDefaultApiBtn = document.getElementById('save-default-api-btn');
+if (saveDefaultApiBtn) {
+  saveDefaultApiBtn.addEventListener('click', saveDefaultApiUrl);
+}
+const applyDefaultApiBtn = document.getElementById('apply-default-api-btn');
+if (applyDefaultApiBtn) {
+  applyDefaultApiBtn.addEventListener('click', applyDefaultApiUrl);
+}
+const clearDefaultApiBtn = document.getElementById('clear-default-api-btn');
+if (clearDefaultApiBtn) {
+  clearDefaultApiBtn.addEventListener('click', clearDefaultApiUrl);
 }
 const cmdSearchInput = document.getElementById('command-search-input');
 if (cmdSearchInput) {
@@ -1758,6 +1885,7 @@ if (autoRetryToggle) autoRetryToggle.checked = autoRetryEnabled;
 if (allowContactToggle) allowContactToggle.checked = allowContactCommands;
 if (batchDelayInput) batchDelayInput.value = String(batchDelayMs);
 setLiveModePill();
+renderDefaultApiConfig();
 const initialApiErr = validateApiBaseUrl(getApiBaseUrl());
 setApiHealthPill('warn', initialApiErr || 'API status unknown');
 setRequestStatusPill('ok', 'Requests idle');

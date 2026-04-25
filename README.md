@@ -28,6 +28,7 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Keyboard shortcuts** — `Ctrl/Cmd+Enter` run visible, `Ctrl/Cmd+K` focus search, `Esc` clear validation
 - **Persistent command view state** — remembers active category, command search query, and sort mode across reloads
 - **Safer backend URL handling** — validates backend URL format/protocol and automatically re-checks API health after edits
+- **Saved API defaults** — save, reuse, or clear a default backend/personal-login bridge URL from the UI
 - **Quick-run first match** — run the first currently visible command instantly via `RUN FIRST` or `Enter` in command search
 - **Media URL actions (incl. profile pics)** — auto-detects latest media URL from live output with one-click `OPEN`, `SAVE`, and `COPY MEDIA URL`
 - **Minimum identity summary** — when a username and backend URL are supplied, OceanGram now attempts to verify the Instagram ID and profile image even before individual commands are explored
@@ -78,6 +79,8 @@ To run commands against a real backend from the UI:
 3. Click any command card.
 
 That API can be a tiny local bridge powered by your own normal personal Instagram login/session; OceanGram does not require a business or creator account-specific flow in the UI.
+
+If you reuse the same bridge often, you can save the current URL as the UI default and restore it later with the built-in default-URL controls. The URL field is also normalized and validated on blur, not only when you manually trigger a health check.
 
 OceanGram calls:
 

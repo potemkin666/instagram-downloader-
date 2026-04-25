@@ -422,6 +422,11 @@
       line-height: 1.55;
       font-size: 0.8rem;
     }
+    .config-actions {
+      justify-content: flex-start;
+      margin-top: 10px;
+      margin-bottom: 0;
+    }
     .api-entry-panel {
       margin-top: 18px;
       padding: 14px 16px;
@@ -1231,7 +1236,13 @@
                placeholder="https://your-personal-login-bridge.example.com (required)"
                autocomplete="off" spellcheck="false"
                aria-label="Backend or personal-login bridge API URL for live mode"/>
-        <div class="field-note">This is the exact place to plug in your own personal-account API endpoint.</div>
+        <div class="field-note">This is the exact place to plug in your own personal-account API endpoint. OceanGram now validates and normalizes this URL when the field loses focus.</div>
+        <div class="commands-toolbar config-actions">
+          <button class="btn-clear-mini" id="save-default-api-btn" type="button">SAVE AS DEFAULT</button>
+          <button class="btn-clear-mini" id="apply-default-api-btn" type="button">USE DEFAULT</button>
+          <button class="btn-clear-mini" id="clear-default-api-btn" type="button">CLEAR DEFAULT</button>
+        </div>
+        <div class="field-note" id="default-api-url-note">No default API URL saved yet.</div>
       </div>
       <div class="commands-toolbar mt-16">
         <button class="btn-mini" id="api-health-btn" onclick="checkApiHealth()">CHECK API HEALTH</button>
