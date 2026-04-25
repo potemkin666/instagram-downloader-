@@ -1446,6 +1446,7 @@ const LIVE_CACHE_STORAGE_KEY = 'oceangramLiveOutputCache';
 const FUNCTIONAL_SETTINGS_STORAGE_KEY = 'oceangramFunctionalSettings';
 const LAST_MEDIA_URL_STORAGE_KEY = 'oceangramLastMediaUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
+const SUPPORTS_ABORT_CONTROLLER = typeof window !== 'undefined' && 'AbortController' in window;
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
 const API_HEALTH_DEBOUNCE_MS = 700;
@@ -1461,7 +1462,7 @@ const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
-const MAX_LIVE_CACHE_ITEMS = 120;
+const MAX_LIVE_CACHE_ITEMS = 50;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = new RegExp(String.raw`^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}}$`);
 const NUMERIC_ID_SEQUENCE_REGEX = new RegExp(String.raw`\b\d{${MIN_INSTAGRAM_ID_DIGITS},}\b`);
@@ -1673,7 +1674,7 @@ function getLiveCacheKey(target, command) {
 
 function readStoredLiveCache() {
   const parsed = readStoredJson(LIVE_CACHE_STORAGE_KEY, {});
-  return parsed && typeof parsed === 'object' ? parsed : {};
+  return trimLiveCacheEntries(parsed && typeof parsed === 'object' ? parsed : {});
 }
 
 function updateCacheCountPill() {
@@ -1684,14 +1685,7 @@ function updateCacheCountPill() {
 }
 
 function persistLiveCache() {
-  const entries = Object.entries(liveResponseCache || {});
-  if (entries.length > MAX_LIVE_CACHE_ITEMS) {
-    entries.sort((a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0));
-    const trim = entries.length - MAX_LIVE_CACHE_ITEMS;
-    for (let i = 0; i < trim; i++) {
-      delete liveResponseCache[entries[i][0]];
-    }
-  }
+  liveResponseCache = trimLiveCacheEntries(liveResponseCache);
   persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
   updateCacheCountPill();
 }
@@ -1719,6 +1713,18 @@ function clearLiveCache() {
   persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
   updateCacheCountPill();
   setTargetValidation('Cleared cached live command output.');
+}
+
+function trimLiveCacheEntries(cache) {
+  const next = cache && typeof cache === 'object' ? { ...cache } : {};
+  const entries = Object.entries(next);
+  if (entries.length <= MAX_LIVE_CACHE_ITEMS) return next;
+  entries.sort((a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0));
+  const trim = entries.length - MAX_LIVE_CACHE_ITEMS;
+  for (let i = 0; i < trim; i++) {
+    delete next[entries[i][0]];
+  }
+  return next;
 }
 
 function readStoredLastMediaUrl() {
@@ -1788,15 +1794,46 @@ function openLastMedia() {
   window.open(lastMediaUrl, '_blank', 'noopener');
 }
 
-function saveLastMedia() {
-  if (!lastMediaUrl) return;
+function triggerDownload(url, filename) {
   const a = document.createElement('a');
-  a.href = lastMediaUrl;
-  a.download = `oceangram-media-${formatTimestampForFilename()}`;
+  a.href = url;
+  a.download = filename;
   a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+function getMediaDownloadFilename(url) {
+  const stamp = formatTimestampForFilename();
+  try {
+    const parsed = new URL(String(url || '').trim());
+    const match = parsed.pathname.match(/\.([a-z0-9]{2,5})$/i);
+    const ext = match ? `.${match[1].toLowerCase()}` : '.jpg';
+    return `oceangram-media-${stamp}${ext}`;
+  } catch (_) {
+    return `oceangram-media-${stamp}.jpg`;
+  }
+}
+
+async function saveLastMedia() {
+  if (!lastMediaUrl) return;
+  const filename = getMediaDownloadFilename(lastMediaUrl);
+  try {
+    const res = await fetchWithTimeout(lastMediaUrl, { method: 'GET' }, API_TIMEOUT_MS);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      triggerDownload(objectUrl, filename);
+      setTargetValidation('Saved latest media locally.');
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    }
+  } catch (_) {
+    triggerDownload(lastMediaUrl, filename);
+    setTargetValidation('Direct download fallback used for latest media.');
+  }
 }
 
 async function copyLastMediaUrl() {
@@ -2120,13 +2157,28 @@ async function fetchLiveLines(target, cmd) {
   ];
 }
 
-async function fetchJsonWithTimeout(url, timeoutMs = API_TIMEOUT_MS) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
+  if (!SUPPORTS_ABORT_CONTROLLER) {
+    return fetch(url, options);
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { method: 'GET', signal: controller.signal });
+    return await fetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = API_TIMEOUT_MS) {
+  return fetchWithTimeout(url, { method: 'GET' }, timeoutMs);
+}
+
+async function parseJsonResponseStrict(response) {
+  try {
+    return await response.json();
+  } catch (_) {
+    throw new Error('Invalid JSON response');
   }
 }
 
@@ -2149,9 +2201,9 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   while (attempt < maxAttempts) {
     attempt += 1;
     try {
-      const res = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      const data = await res.json();
+      const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      const data = await parseJsonResponseStrict(response);
       const payload = parseLiveOutputLines(data);
       if (!hasMeaningfulOutput(payload)) {
         return { ok: false, type: 'empty', errorMessage: 'Live backend returned no output', data };
@@ -2163,7 +2215,11 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
       if (attempt < maxAttempts) continue;
     }
   }
-  const msg = lastError?.name === 'AbortError' ? 'request timed out' : 'connection error';
+  const msg = lastError?.name === 'AbortError'
+    ? 'request timed out'
+    : lastError?.message === 'Invalid JSON response'
+      ? 'invalid JSON response'
+      : 'connection error';
   return { ok: false, type: 'network', errorMessage: `Live request failed: ${msg}` };
 }
 
@@ -2171,18 +2227,29 @@ async function requestProfileSummaryEndpoint(target) {
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
   if (baseErr) return { ok: false, reason: baseErr };
+  let lastReason = 'No dedicated profile summary endpoint responded.';
   for (const endpoint of IDENTITY_ENDPOINTS) {
     try {
-      const response = await fetchJsonWithTimeout(`${base}${endpoint}?target=${encodeURIComponent(target)}`, API_TIMEOUT_MS);
-      if (!response.ok) continue;
-      const data = await response.json();
+      const url = new URL(endpoint, `${base}/`);
+      url.searchParams.set('target', target);
+      const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
+      if (!response.ok) {
+        lastReason = `Profile summary endpoint responded ${response.status}`;
+        continue;
+      }
+      const data = await parseJsonResponseStrict(response);
       const candidate = extractIdentityFromStructuredPayload(data);
       if (candidate && (candidate.instagramId || candidate.profileImageUrl)) {
         return { ok: true, candidate, source: endpoint.replace('/api/', 'endpoint: ') };
       }
-    } catch (_) {}
+      lastReason = 'Profile summary endpoint returned no usable identity data.';
+    } catch (err) {
+      lastReason = err?.message === 'Invalid JSON response'
+        ? 'Profile summary endpoint returned invalid JSON.'
+        : 'No dedicated profile summary endpoint responded.';
+    }
   }
-  return { ok: false, reason: 'No dedicated profile summary endpoint responded.' };
+  return { ok: false, reason: lastReason };
 }
 
 function buildIdentityChecks(target, summary, runtime) {
@@ -2500,16 +2567,13 @@ async function checkApiHealth() {
   }
   const btn = document.getElementById('api-health-btn');
   if (btn) btn.disabled = true;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_HEALTH_CHECK_TIMEOUT_MS);
   try {
-    const res = await fetch(`${base}/api/health`, { method: 'GET', signal: controller.signal });
+    const res = await fetchWithTimeout(`${base}/api/health`, { method: 'GET' }, API_HEALTH_CHECK_TIMEOUT_MS);
     if (res.ok) setApiHealthPill('ok', 'API reachable');
     else setApiHealthPill('warn', `API responded ${res.status}`);
   } catch (_) {
     setApiHealthPill('error', 'API unreachable');
   } finally {
-    clearTimeout(timeoutId);
     if (btn) btn.disabled = false;
   }
 }
@@ -3285,6 +3349,7 @@ document.addEventListener('keydown', (e) => {
 });
 initStoredState();
 liveResponseCache = readStoredLiveCache();
+persistLiveCache();
 const functionalSettings = readStoredFunctionalSettings();
 useCacheEnabled = functionalSettings.useCache;
 autoRetryEnabled = functionalSettings.autoRetry;
