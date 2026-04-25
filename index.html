@@ -1754,7 +1754,7 @@ function renderProfileSummary() {
 }
 
 function normalizeInstagramId(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) return String(Math.trunc(value));
+  if (typeof value === 'number') return Number.isSafeInteger(value) ? String(value) : '';
   const text = String(value || '').trim();
   if (!text) return '';
   const match = text.match(NUMERIC_ID_SEQUENCE_REGEX);
@@ -1763,7 +1763,7 @@ function normalizeInstagramId(value) {
 
 function firstNonEmptyValue(values) {
   for (const value of values) {
-    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return '';
@@ -2036,7 +2036,7 @@ async function requestProfileSummaryEndpoint(target) {
   for (const endpoint of IDENTITY_ENDPOINTS) {
     try {
       const response = await fetchJsonWithTimeout(`${base}${endpoint}?target=${encodeURIComponent(target)}`, API_TIMEOUT_MS);
-      if (response.status === 404 || !response.ok) continue;
+      if (!response.ok) continue;
       const data = await response.json();
       const candidate = extractIdentityFromStructuredPayload(data);
       if (candidate && (candidate.instagramId || candidate.profileImageUrl)) {
@@ -3043,7 +3043,6 @@ if (targetInput) {
     if (!targetInput.value.trim()) setTargetValidation('');
     scheduleIdentitySummaryRefresh();
   });
-  targetInput.addEventListener('change', () => scheduleIdentitySummaryRefresh());
 }
 document.addEventListener('keydown', (e) => {
   const key = (e.key || '').toLowerCase();
