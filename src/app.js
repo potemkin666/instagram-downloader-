@@ -760,7 +760,6 @@ async function prefetchBatchCommandLines(commands, target) {
     }
     if (cancelRunAll) return { command, cancelled: true };
     const lines = await limit(async () => {
-      if (cancelRunAll) return null;
       setRequestStatusPill('warn', `Fetching ${command.name} (${index + 1}/${commands.length})...`);
       return apiClient.fetchLiveLines(target, command.name);
     });
@@ -902,7 +901,7 @@ function getRateLimitBackoffMs(response) {
     return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, Math.round(numericSeconds * 1000)));
   }
   const retryAt = Date.parse(raw);
-  if (Number.isFinite(retryAt)) {
+  if (Number.isFinite(retryAt) && retryAt > Date.now()) {
     return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, retryAt - Date.now()));
   }
   return DEFAULT_RATE_LIMIT_BACKOFF_MS;
