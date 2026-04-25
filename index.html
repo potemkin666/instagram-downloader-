@@ -1462,7 +1462,7 @@ const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
-// Keep the cache small enough for localStorage while still preserving recent command reuse.
+// Cap cache at 50 entries to keep localStorage bounded while still retaining a useful working set of recent commands.
 const MAX_LIVE_CACHE_ITEMS = 50;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = new RegExp(String.raw`^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}}$`);
@@ -2161,6 +2161,7 @@ async function fetchLiveLines(target, cmd) {
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   if (!SUPPORTS_ABORT_CONTROLLER) {
+    // Older browsers cannot cancel the underlying request, so we reject locally and ignore any late response.
     return Promise.race([
       fetch(url, options),
       new Promise((_, reject) => {
@@ -2192,6 +2193,10 @@ async function parseJsonResponseStrict(response) {
     const contentType = response?.headers?.get('content-type') || 'unknown content-type';
     throw new Error(`Invalid JSON response (${contentType})`);
   }
+}
+
+function isInvalidJsonError(err) {
+  return /^Invalid JSON response/.test(err?.message || '');
 }
 
 async function requestLiveCommandPayload(target, cmd, options = {}) {
@@ -2229,7 +2234,7 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   }
   const msg = lastError?.name === 'AbortError'
     ? 'request timed out'
-    : /^Invalid JSON response/.test(lastError?.message || '')
+    : isInvalidJsonError(lastError)
       ? lastError.message
       : 'connection error';
   return { ok: false, type: 'network', errorMessage: `Live request failed: ${msg}` };
@@ -2256,7 +2261,7 @@ async function requestProfileSummaryEndpoint(target) {
       }
       lastReason = 'Profile summary endpoint returned no usable identity data.';
     } catch (err) {
-      lastReason = /^Invalid JSON response/.test(err?.message || '')
+      lastReason = isInvalidJsonError(err)
         ? 'Profile summary endpoint returned invalid JSON.'
         : 'No dedicated profile summary endpoint responded.';
     }
