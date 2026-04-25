@@ -1318,13 +1318,19 @@ const RUN_ALL_LABEL_DEFAULT = 'RUN VISIBLE';
 const RUN_ALL_LABEL_STOP = 'STOP';
 const COMMAND_CATEGORIES = new Set(['all', 'Profile', 'Social', 'Content', 'Engagement', 'Contact', 'favorites']);
 const DEFAULT_COMMAND_UI_STATE = { category: 'all', search: '', sort: 'default' };
-const PROFILE_SUMMARY_ENDPOINTS = ['/api/profile-summary', '/api/profile', '/api/identity'];
+const IDENTITY_ENDPOINTS = ['/api/profile-summary', '/api/profile', '/api/identity'];
+const MIN_INSTAGRAM_ID_DIGITS = 4;
+const MAX_INSTAGRAM_USERNAME_LENGTH = 30;
+const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
 const MAX_LIVE_CACHE_ITEMS = 120;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
-const INSTAGRAM_USERNAME_REGEX = /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,30}$/;
+const INSTAGRAM_USERNAME_REGEX = new RegExp(`^(?!.*\\.\\.)(?!\\.)(?!.*\\.$)[A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}}$`);
+const INSTAGRAM_ID_REGEX = new RegExp(`\\b\\d{${MIN_INSTAGRAM_ID_DIGITS},}\\b`);
+const EXPLICIT_USERNAME_REGEX = new RegExp(`\\b(?:username|user name|target|account|profile)\\b\\s*[:=#-]\\s*@?([A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}})\\b`, 'i');
+const EXPLICIT_INSTAGRAM_ID_REGEX = new RegExp(`\\b(?:instagram\\s*id|profile\\s*id|user\\s*id|account\\s*id|pk|id)\\b\\s*[:=#-]\\s*(\\d{${MIN_INSTAGRAM_ID_DIGITS},})\\b`, 'i');
 const MAX_RECENT_COMMANDS = 8;
 const MAX_RECENT_TARGETS = 8;
 const INITIAL_TERMINAL_LINES = [
@@ -1751,7 +1757,7 @@ function normalizeInstagramId(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return String(Math.trunc(value));
   const text = String(value || '').trim();
   if (!text) return '';
-  const match = text.match(/\b\d{4,}\b/);
+  const match = text.match(INSTAGRAM_ID_REGEX);
   return match ? match[0] : '';
 }
 
@@ -1786,11 +1792,10 @@ function isValidHttpUrl(raw) {
   }
 }
 
-function extractIdentityFromStructuredPayload(data, fallbackTarget = '') {
+function extractIdentityFromStructuredPayload(data) {
   if (!data || typeof data !== 'object') return null;
   const username = firstNonEmptyValue([
     pickNestedValue(data, ['username', 'user.username', 'profile.username', 'account.username', 'data.username']),
-    fallbackTarget,
   ]).replace(/^@/, '');
   const instagramId = normalizeInstagramId(firstNonEmptyValue([
     pickNestedValue(data, ['instagram_id', 'instagramId', 'id', 'pk', 'user.id', 'user.pk', 'user.instagram_id', 'profile.id', 'profile.pk', 'account.id', 'account.pk', 'data.id', 'data.pk']),
@@ -1805,7 +1810,7 @@ function extractIdentityFromStructuredPayload(data, fallbackTarget = '') {
   };
 }
 
-function extractIdentityFromLines(lines, fallbackTarget = '') {
+function extractIdentityFromLines(lines) {
   if (!Array.isArray(lines)) return null;
   let username = '';
   let instagramId = '';
@@ -1813,16 +1818,16 @@ function extractIdentityFromLines(lines, fallbackTarget = '') {
   lines.forEach(([, rawText]) => {
     const text = String(rawText || '').trim();
     if (!text) return;
-    const usernameMatch = text.match(/\b(?:username|user name|target|account|profile)\b\s*[:=#-]\s*@?([A-Za-z0-9._]{1,30})\b/i);
+    const usernameMatch = text.match(EXPLICIT_USERNAME_REGEX);
     if (!username && usernameMatch) username = usernameMatch[1];
-    const idMatch = text.match(/\b(?:instagram\s*id|profile\s*id|user\s*id|account\s*id|pk|id)\b\s*[:=#-]\s*(\d{4,})\b/i);
+    const idMatch = text.match(EXPLICIT_INSTAGRAM_ID_REGEX);
     if (!instagramId && idMatch) instagramId = idMatch[1];
     extractUrlsFromText(text).forEach(url => {
       if (looksLikeMediaUrl(url)) imageCandidates.push(url);
     });
   });
   return {
-    username: (username || fallbackTarget || '').replace(/^@/, ''),
+    username: (username || '').replace(/^@/, ''),
     instagramId: normalizeInstagramId(instagramId),
     profileImageUrl: imageCandidates[0] || '',
   };
@@ -1839,7 +1844,7 @@ function mergeIdentityCandidates(...candidates) {
 }
 
 function usernamesMatch(expected, actual) {
-  if (!expected || !actual) return true;
+  if (!expected || !actual) return false;
   return String(expected).replace(/^@/, '').toLowerCase() === String(actual).replace(/^@/, '').toLowerCase();
 }
 
@@ -2028,12 +2033,12 @@ async function requestProfileSummaryEndpoint(target) {
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
   if (baseErr) return { ok: false, reason: baseErr };
-  for (const endpoint of PROFILE_SUMMARY_ENDPOINTS) {
+  for (const endpoint of IDENTITY_ENDPOINTS) {
     try {
       const response = await fetchJsonWithTimeout(`${base}${endpoint}?target=${encodeURIComponent(target)}`, API_TIMEOUT_MS);
       if (response.status === 404 || !response.ok) continue;
       const data = await response.json();
-      const candidate = extractIdentityFromStructuredPayload(data, target);
+      const candidate = extractIdentityFromStructuredPayload(data);
       if (candidate && (candidate.instagramId || candidate.profileImageUrl)) {
         return { ok: true, candidate, source: endpoint.replace('/api/', 'endpoint: ') };
       }
@@ -2110,19 +2115,19 @@ async function loadProfileSummary(target, options = {}) {
 
   const infoIdentity = infoResult.ok
     ? mergeIdentityCandidates(
-      extractIdentityFromStructuredPayload(infoResult.data, expectedTarget),
-      extractIdentityFromLines(infoResult.lines, expectedTarget),
+      extractIdentityFromStructuredPayload(infoResult.data),
+      extractIdentityFromLines(infoResult.lines),
     )
     : null;
   const propicIdentity = propicResult.ok
     ? mergeIdentityCandidates(
-      extractIdentityFromStructuredPayload(propicResult.data, expectedTarget),
-      extractIdentityFromLines(propicResult.lines, expectedTarget),
+      extractIdentityFromStructuredPayload(propicResult.data),
+      extractIdentityFromLines(propicResult.lines),
     )
     : null;
   const endpointIdentity = endpointResult.ok ? endpointResult.candidate : null;
   const mergedIdentity = {
-    username: mergeIdentityCandidates(endpointIdentity, infoIdentity, propicIdentity, { username: expectedTarget }).username,
+    username: mergeIdentityCandidates(endpointIdentity, infoIdentity, propicIdentity).username,
     instagramId: mergeIdentityCandidates(endpointIdentity, infoIdentity, propicIdentity).instagramId,
     profileImageUrl: mergeIdentityCandidates(endpointIdentity, propicIdentity, infoIdentity).profileImageUrl,
   };
@@ -2194,7 +2199,7 @@ function scheduleIdentitySummaryRefresh() {
   }
   identityRefreshDebounceId = setTimeout(() => {
     loadProfileSummary(target);
-  }, 500);
+  }, IDENTITY_REFRESH_DEBOUNCE_MS);
 }
 
 function refreshIdentitySummary() {
