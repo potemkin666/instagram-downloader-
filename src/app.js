@@ -7,6 +7,9 @@ const apiClient = createApiClient({
     fetchLiveLines,
     loadProfileSummary,
     checkApiHealth,
+    loadAuthSession,
+    login: loginBackendSession,
+    logout: logoutBackendSession,
   },
 });
 
@@ -52,6 +55,7 @@ function renderCards() {
     grid.appendChild(empty);
   }
   updateVisibleCount(visible.length);
+  syncLiveActionAvailability();
 }
 
 function filterCards(btn) {
@@ -65,16 +69,19 @@ function filterCards(btn) {
    TERMINAL
 ═══════════════════════════════════════════════════════════ */
 let _typing = false;
-const API_URL_STORAGE_KEY = 'oceangramApiBaseUrl';
-const FAVORITES_STORAGE_KEY = 'oceangramFavoriteCommands';
-const RUN_COUNT_STORAGE_KEY = 'oceangramCommandRunCounts';
-const RECENT_TARGETS_STORAGE_KEY = 'oceangramRecentTargets';
-const RECENT_COMMANDS_STORAGE_KEY = 'oceangramRecentCommands';
-const COMMAND_UI_STATE_STORAGE_KEY = 'oceangramCommandUiState';
-const LIVE_CACHE_STORAGE_KEY = 'oceangramLiveOutputCache';
-const FUNCTIONAL_SETTINGS_STORAGE_KEY = 'oceangramFunctionalSettings';
-const LAST_MEDIA_URL_STORAGE_KEY = 'oceangramLastMediaUrl';
-const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
+const STORAGE_KEYS = {
+  apiUrl: 'oceangramApiBaseUrl',
+  appConfig: 'oceangramAppConfig',
+  favorites: 'oceangramFavoriteCommands',
+  runCounts: 'oceangramCommandRunCounts',
+  recentTargets: 'oceangramRecentTargets',
+  recentCommands: 'oceangramRecentCommands',
+  commandUiState: 'oceangramCommandUiState',
+  liveCache: 'oceangramLiveOutputCache',
+  functionalSettings: 'oceangramFunctionalSettings',
+  lastMediaUrl: 'oceangramLastMediaUrl',
+};
+const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success', 'error', 'json', 'table']);
 // Keep a fallback path for older browsers that lack AbortController-based request cancellation.
 const SUPPORTS_ABORT_CONTROLLER = 'AbortController' in window;
 const API_TIMEOUT_MS = 15000;
@@ -91,7 +98,15 @@ const MAX_INSTAGRAM_USERNAME_LENGTH = 30;
 const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
+// Keep batch concurrency at 3 to improve throughput without overwhelming rate-limited backends.
+const BATCH_FETCH_CONCURRENCY = 3;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5000;
+const MAX_RATE_LIMIT_BACKOFF_MS = 30000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
+const DEFAULT_APP_CONFIG = { defaultApiUrl: '' };
+const MISSING_API_URL_MESSAGE = 'Set backend or personal-login bridge URL first';
+const OFFLINE_MESSAGE = 'Browser is offline. Reconnect to use live backend commands.';
+const TOAST_DURATION_MS = 3200;
 // Cap cache at 50 entries to keep localStorage bounded while still retaining a useful working set of recent commands.
 const MAX_LIVE_CACHE_ITEMS = 50;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
@@ -102,6 +117,7 @@ const EXPLICIT_INSTAGRAM_ID_REGEX = new RegExp(String.raw`\b(?:instagram\s*id|pr
 const MEDIA_HOST_SUFFIXES = ['instagram.com', 'cdninstagram.com', 'fbcdn.net'];
 const MAX_RECENT_COMMANDS = 8;
 const MAX_RECENT_TARGETS = 8;
+const AUTH_SESSION_REFRESH_DEBOUNCE_MS = 400;
 const INITIAL_TERMINAL_LINES = [
   ['prompt', '🌊 OceanGram v1.0.0 — bioluminescent shell ready'],
   ['dim', '════════════════════════════════════════════════'],
@@ -125,9 +141,249 @@ let autoRetryEnabled = DEFAULT_FUNCTIONAL_SETTINGS.autoRetry;
 let allowContactCommands = DEFAULT_FUNCTIONAL_SETTINGS.allowContact;
 let batchDelayMs = DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
 let lastMediaUrl = '';
+let appConfig = { ...DEFAULT_APP_CONFIG };
 let profileSummaryState = createEmptyProfileSummaryState();
 let activeIdentityRequestId = 0;
 let identityRefreshDebounceId = null;
+let offlineMode = typeof navigator !== 'undefined' && navigator.onLine === false;
+let authSessionState = createEmptyAuthSessionState();
+let activeAuthSessionRequestId = 0;
+let authSessionRefreshDebounceId = null;
+let authRequestInFlight = false;
+
+function createStateStore(storage = window.localStorage) {
+  const safeGet = key => {
+    try { return storage.getItem(key); }
+    catch (_) { return null; }
+  };
+  const safeSet = (key, value) => {
+    try {
+      storage.setItem(key, value);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+  const safeRemove = key => {
+    try {
+      storage.removeItem(key);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+  return {
+    getString(key, fallback = '') {
+      const value = safeGet(key);
+      return typeof value === 'string' ? value : fallback;
+    },
+    setString(key, value) {
+      const normalized = String(value || '').trim();
+      if (!normalized) return safeRemove(key);
+      return safeSet(key, normalized);
+    },
+    getJson(key, fallback) {
+      const raw = safeGet(key);
+      if (!raw) return fallback;
+      try {
+        return JSON.parse(raw);
+      } catch (_) {
+        return fallback;
+      }
+    },
+    setJson(key, value) {
+      return safeSet(key, JSON.stringify(value));
+    },
+    remove(key) {
+      return safeRemove(key);
+    },
+  };
+}
+
+const stateStore = createStateStore();
+
+function getToastTitle(kind) {
+  if (kind === 'success') return 'SUCCESS';
+  if (kind === 'warn') return 'NOTICE';
+  if (kind === 'error') return 'ERROR';
+  return 'UPDATE';
+}
+
+function formatCommandCountLabel() {
+  return `${COMMANDS.length} commands available`;
+}
+
+function renderCommandCount() {
+  const pill = document.getElementById('command-count-pill');
+  if (pill) pill.innerHTML = `<span class="dot dot-green"></span>${formatCommandCountLabel()}`;
+}
+
+function showToast(message, { kind = 'info', title = getToastTitle(kind), durationMs = TOAST_DURATION_MS } = {}) {
+  const region = document.getElementById('toast-region');
+  const text = String(message || '').trim();
+  if (!region || !text) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${kind}`;
+  toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  const dotClass = kind === 'success' ? 'dot-green' : kind === 'warn' ? 'dot-yellow' : kind === 'error' ? 'dot-red' : 'dot-pink';
+  const heading = document.createElement('div');
+  heading.className = 'toast-title';
+  const dot = document.createElement('span');
+  dot.className = `dot ${dotClass}`;
+  const titleText = document.createElement('span');
+  titleText.textContent = String(title || getToastTitle(kind));
+  heading.append(dot, titleText);
+  const body = document.createElement('div');
+  body.textContent = text;
+  toast.append(heading, body);
+  region.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, Math.max(1200, durationMs));
+}
+
+function setConnectivityPill(status, text) {
+  const pill = document.getElementById('connectivity-pill');
+  if (!pill) return;
+  if (status === 'ok') pill.innerHTML = `<span class="dot dot-green"></span>${text}`;
+  else if (status === 'warn') pill.innerHTML = `<span class="dot dot-yellow"></span>${text}`;
+  else pill.innerHTML = `<span class="dot dot-red"></span>${text}`;
+}
+
+function canUseLiveBackend({ notify = false, message = OFFLINE_MESSAGE } = {}) {
+  if (!offlineMode) return true;
+  setRequestStatusPill('warn', 'Offline — reconnect for live commands');
+  if (notify) showToast(message, { kind: 'warn', title: 'OFFLINE' });
+  return false;
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function tryParseJsonString(value) {
+  const text = String(value || '').trim();
+  if (!text || !/^[\[{]/.test(text)) return null;
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return null;
+  }
+}
+
+function stringifyStructuredValue(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (_) {
+    return String(value);
+  }
+}
+
+function toTableText(rows, columns = []) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const safeColumns = Array.isArray(columns) && columns.length
+    ? columns.map(column => String(column))
+    : Array.from(new Set(safeRows.flatMap(row => isPlainObject(row) ? Object.keys(row) : [])));
+  if (!safeColumns.length) return '';
+  const normalizedRows = safeRows.map(row => safeColumns.reduce((acc, column) => {
+    const value = isPlainObject(row) ? row[column] : '';
+    acc[column] = value === null || typeof value === 'undefined'
+      ? ''
+      : isPlainObject(value) || Array.isArray(value)
+        ? stringifyStructuredValue(value)
+        : String(value);
+    return acc;
+  }, {}));
+  const widths = safeColumns.map(column => Math.max(
+    column.length,
+    ...normalizedRows.map(row => String(row[column] || '').split('\n').reduce((max, line) => Math.max(max, line.length), 0)),
+  ));
+  const separator = widths.map(width => '-'.repeat(width)).join('-|-');
+  const header = safeColumns.map((column, index) => column.padEnd(widths[index], ' ')).join(' | ');
+  const body = normalizedRows.flatMap(row => {
+    const cellLines = safeColumns.map(column => String(row[column] || '').split('\n'));
+    const height = Math.max(...cellLines.map(lines => lines.length), 1);
+    return Array.from({ length: height }, (_, lineIndex) => safeColumns
+      .map((column, columnIndex) => (cellLines[columnIndex][lineIndex] || '').padEnd(widths[columnIndex], ' '))
+      .join(' | '));
+  });
+  return [header, separator, ...body].join('\n');
+}
+
+function appendStructuredValueLines(lines, value, { title = '', preferredType = 'json' } = {}) {
+  if (title) lines.push(['label', title]);
+  if (Array.isArray(value) && value.every(item => isPlainObject(item))) {
+    const tableText = toTableText(value);
+    if (tableText) {
+      lines.push(['table', tableText]);
+      return;
+    }
+  }
+  if (isPlainObject(value) && Array.isArray(value.rows)) {
+    const tableText = toTableText(value.rows, value.columns);
+    if (tableText) {
+      lines.push(['table', tableText]);
+      return;
+    }
+  }
+  lines.push([preferredType, stringifyStructuredValue(value)]);
+}
+
+function createEmptyAuthSessionState(overrides = {}) {
+  return {
+    status: 'idle',
+    authenticated: false,
+    available: false,
+    username: '',
+    source: '',
+    statusText: 'Connect a backend URL to check authentication state.',
+    checkedAt: '',
+    ...overrides,
+  };
+}
+
+function setAuthSessionState(overrides = {}) {
+  authSessionState = createEmptyAuthSessionState({ ...authSessionState, ...overrides });
+  renderAuthSessionState();
+}
+
+function formatAuthSourceLabel(source) {
+  const value = String(source || '').trim();
+  if (!value) return '';
+  return value.replace(/[_-]+/g, ' ');
+}
+
+function renderAuthSessionState() {
+  const pill = document.getElementById('auth-session-pill');
+  const status = document.getElementById('auth-session-status');
+  const loginBtn = document.getElementById('auth-login-btn');
+  const logoutBtn = document.getElementById('auth-logout-btn');
+  const refreshBtn = document.getElementById('auth-refresh-btn');
+  const userInput = document.getElementById('auth-username-input');
+  const passwordInput = document.getElementById('auth-password-input');
+  const cookieInput = document.getElementById('auth-cookie-input');
+
+  if (status) status.textContent = authSessionState.statusText || 'No backend auth status yet.';
+  if (pill) {
+    if (authSessionState.authenticated) {
+      pill.innerHTML = `<span class="dot dot-green"></span>Authenticated${authSessionState.username ? ` as @${authSessionState.username}` : ''}`;
+    } else if (authSessionState.status === 'loading') {
+      pill.innerHTML = '<span class="dot dot-yellow"></span>Checking auth session';
+    } else if (authSessionState.available) {
+      pill.innerHTML = '<span class="dot dot-yellow"></span>Signed out';
+    } else {
+      pill.innerHTML = '<span class="dot dot-yellow"></span>Backend auth unavailable';
+    }
+  }
+
+  const disableAuthActions = authRequestInFlight || commandInFlight || offlineMode;
+  if (loginBtn) loginBtn.disabled = disableAuthActions;
+  if (logoutBtn) logoutBtn.disabled = disableAuthActions || !authSessionState.authenticated;
+  if (refreshBtn) refreshBtn.disabled = disableAuthActions;
+  if (userInput) userInput.disabled = authRequestInFlight || commandInFlight || offlineMode;
+  if (passwordInput) passwordInput.disabled = authRequestInFlight || commandInFlight || offlineMode;
+  if (cookieInput) cookieInput.disabled = authRequestInFlight || commandInFlight || offlineMode;
+}
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -189,42 +445,55 @@ function setLiveModePill() {
   pill.innerHTML = '<span class="dot dot-green"></span>Live mode active';
 }
 
+function normalizeApiUrlValue(value) {
+  const raw = String(value || '').trim();
+  return raw ? raw.replace(/\/+$/, '') : '';
+}
+
 function readStoredApiBaseUrl() {
-  try { return localStorage.getItem(API_URL_STORAGE_KEY) || ''; }
-  catch (_) { return ''; }
+  return normalizeApiUrlValue(stateStore.getString(STORAGE_KEYS.apiUrl, ''));
+}
+
+function getInitialApiUrl() {
+  return readStoredApiBaseUrl() || normalizeApiUrlValue(appConfig.defaultApiUrl);
 }
 
 function persistApiBaseUrl(value) {
-  try {
-    if (value) localStorage.setItem(API_URL_STORAGE_KEY, value);
-    else localStorage.removeItem(API_URL_STORAGE_KEY);
-  } catch (_) {}
+  stateStore.setString(STORAGE_KEYS.apiUrl, normalizeApiUrlValue(value));
 }
 
 function readStoredJson(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw);
-  } catch (_) {
-    return fallback;
-  }
+  return stateStore.getJson(key, fallback);
 }
 
 function persistJson(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (_) {}
+  stateStore.setJson(key, value);
+}
+
+function readStoredAppConfig() {
+  const saved = readStoredJson(STORAGE_KEYS.appConfig, {});
+  if (!saved || typeof saved !== 'object') return { ...DEFAULT_APP_CONFIG };
+  return {
+    ...DEFAULT_APP_CONFIG,
+    ...saved,
+    defaultApiUrl: normalizeApiUrlValue(saved.defaultApiUrl),
+  };
+}
+
+function persistAppConfig() {
+  persistJson(STORAGE_KEYS.appConfig, {
+    defaultApiUrl: normalizeApiUrlValue(appConfig.defaultApiUrl),
+  });
 }
 
 function initStoredState() {
-  const favoriteIds = readStoredJson(FAVORITES_STORAGE_KEY, []);
+  const favoriteIds = readStoredJson(STORAGE_KEYS.favorites, []);
   favoriteCommandIds = new Set(Array.isArray(favoriteIds) ? favoriteIds : []);
-  const counts = readStoredJson(RUN_COUNT_STORAGE_KEY, {});
+  const counts = readStoredJson(STORAGE_KEYS.runCounts, {});
   commandRunCounts = counts && typeof counts === 'object' ? counts : {};
-  const targets = readStoredJson(RECENT_TARGETS_STORAGE_KEY, []);
+  const targets = readStoredJson(STORAGE_KEYS.recentTargets, []);
   recentTargets = Array.isArray(targets) ? targets.slice(0, MAX_RECENT_TARGETS) : [];
-  const commands = readStoredJson(RECENT_COMMANDS_STORAGE_KEY, []);
+  const commands = readStoredJson(STORAGE_KEYS.recentCommands, []);
   recentCommands = Array.isArray(commands)
     ? commands
       .filter(item => item && typeof item.commandId === 'string' && typeof item.target === 'string')
@@ -233,23 +502,23 @@ function initStoredState() {
 }
 
 function persistFavorites() {
-  persistJson(FAVORITES_STORAGE_KEY, Array.from(favoriteCommandIds));
+  persistJson(STORAGE_KEYS.favorites, Array.from(favoriteCommandIds));
 }
 
 function persistRunCounts() {
-  persistJson(RUN_COUNT_STORAGE_KEY, commandRunCounts);
+  persistJson(STORAGE_KEYS.runCounts, commandRunCounts);
 }
 
 function persistRecentTargets() {
-  persistJson(RECENT_TARGETS_STORAGE_KEY, recentTargets);
+  persistJson(STORAGE_KEYS.recentTargets, recentTargets);
 }
 
 function persistRecentCommands() {
-  persistJson(RECENT_COMMANDS_STORAGE_KEY, recentCommands);
+  persistJson(STORAGE_KEYS.recentCommands, recentCommands);
 }
 
 function persistCommandUiState() {
-  persistJson(COMMAND_UI_STATE_STORAGE_KEY, {
+  persistJson(STORAGE_KEYS.commandUiState, {
     category: currentCategory,
     search: commandSearchText,
     sort: sortMode,
@@ -257,7 +526,7 @@ function persistCommandUiState() {
 }
 
 function readStoredCommandUiState() {
-  const state = readStoredJson(COMMAND_UI_STATE_STORAGE_KEY, {});
+  const state = readStoredJson(STORAGE_KEYS.commandUiState, {});
   if (!state || typeof state !== 'object') return { ...DEFAULT_COMMAND_UI_STATE };
   return {
     category: COMMAND_CATEGORIES.has(state.category) ? state.category : DEFAULT_COMMAND_UI_STATE.category,
@@ -279,7 +548,7 @@ function isContactCommand(command) {
 }
 
 function readStoredFunctionalSettings() {
-  const saved = readStoredJson(FUNCTIONAL_SETTINGS_STORAGE_KEY, {});
+  const saved = readStoredJson(STORAGE_KEYS.functionalSettings, {});
   if (!saved || typeof saved !== 'object') return { ...DEFAULT_FUNCTIONAL_SETTINGS };
   return {
     useCache: saved.useCache !== false,
@@ -292,7 +561,7 @@ function readStoredFunctionalSettings() {
 }
 
 function persistFunctionalSettings() {
-  persistJson(FUNCTIONAL_SETTINGS_STORAGE_KEY, {
+  persistJson(STORAGE_KEYS.functionalSettings, {
     useCache: useCacheEnabled,
     autoRetry: autoRetryEnabled,
     allowContact: allowContactCommands,
@@ -305,7 +574,7 @@ function getLiveCacheKey(target, command) {
 }
 
 function readStoredLiveCache() {
-  const parsed = readStoredJson(LIVE_CACHE_STORAGE_KEY, {});
+  const parsed = readStoredJson(STORAGE_KEYS.liveCache, {});
   return trimLiveCacheEntries(parsed && typeof parsed === 'object' ? parsed : {});
 }
 
@@ -318,7 +587,7 @@ function updateCacheCountPill() {
 
 function persistLiveCache() {
   liveResponseCache = trimLiveCacheEntries(liveResponseCache);
-  persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
+  persistJson(STORAGE_KEYS.liveCache, liveResponseCache);
   updateCacheCountPill();
 }
 
@@ -342,9 +611,9 @@ function setCachedLiveLines(target, command, lines) {
 
 function clearLiveCache() {
   liveResponseCache = {};
-  persistJson(LIVE_CACHE_STORAGE_KEY, liveResponseCache);
+  persistJson(STORAGE_KEYS.liveCache, liveResponseCache);
   updateCacheCountPill();
-  setTargetValidation('Cleared cached live command output.');
+  showToast('Cleared cached live command output.', { kind: 'success' });
 }
 
 function trimLiveCacheEntries(cache) {
@@ -361,29 +630,74 @@ function trimLiveCacheEntries(cache) {
 }
 
 function readStoredLastMediaUrl() {
-  try { return localStorage.getItem(LAST_MEDIA_URL_STORAGE_KEY) || ''; }
-  catch (_) { return ''; }
+  return stateStore.getString(STORAGE_KEYS.lastMediaUrl, '');
 }
 
 function persistLastMediaUrl(url) {
-  try {
-    if (url) localStorage.setItem(LAST_MEDIA_URL_STORAGE_KEY, url);
-    else localStorage.removeItem(LAST_MEDIA_URL_STORAGE_KEY);
-  } catch (_) {}
+  stateStore.setString(STORAGE_KEYS.lastMediaUrl, url);
+}
+
+function syncLiveActionAvailability() {
+  const disableLiveActions = commandInFlight || offlineMode;
+  document.querySelectorAll('.command-card').forEach(card => {
+    card.classList.toggle('command-card-disabled', disableLiveActions);
+    card.setAttribute('aria-disabled', disableLiveActions ? 'true' : 'false');
+    card.setAttribute('tabindex', disableLiveActions ? '-1' : '0');
+  });
+  const diveBtn = document.getElementById('dive-btn');
+  if (diveBtn) diveBtn.disabled = disableLiveActions;
+  const retryBtn = document.getElementById('retry-btn');
+  if (retryBtn) retryBtn.disabled = disableLiveActions;
+  const apiHealthBtn = document.getElementById('api-health-btn');
+  if (apiHealthBtn) apiHealthBtn.disabled = disableLiveActions;
+  const runFirstBtn = document.getElementById('run-first-btn');
+  if (runFirstBtn) runFirstBtn.disabled = disableLiveActions;
+  const runAllBtn = document.getElementById('run-all-btn');
+  if (runAllBtn && !runAllInProgress) runAllBtn.disabled = disableLiveActions;
+  const clearCacheBtn = document.getElementById('clear-cache-btn');
+  if (clearCacheBtn) clearCacheBtn.disabled = commandInFlight;
+  const refreshIdentityBtn = document.getElementById('refresh-identity-btn');
+  if (refreshIdentityBtn) refreshIdentityBtn.disabled = disableLiveActions || profileSummaryState.status === 'loading';
+  updateMediaButtons();
+  renderAuthSessionState();
 }
 
 function updateMediaButtons() {
-  const disabled = !lastMediaUrl;
-  ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.disabled = disabled;
-  });
+  const noMedia = !lastMediaUrl;
+  const openMediaBtn = document.getElementById('open-media-btn');
+  if (openMediaBtn) openMediaBtn.disabled = noMedia || offlineMode;
+  const saveMediaBtn = document.getElementById('save-media-btn');
+  if (saveMediaBtn) saveMediaBtn.disabled = noMedia || offlineMode;
+  const copyMediaBtn = document.getElementById('copy-media-btn');
+  if (copyMediaBtn) copyMediaBtn.disabled = noMedia;
 }
 
 function setLastMediaUrl(url) {
   lastMediaUrl = String(url || '').trim();
   persistLastMediaUrl(lastMediaUrl);
   updateMediaButtons();
+}
+
+function updateConnectivityState({ announce = false } = {}) {
+  const nextOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const changed = nextOffline !== offlineMode;
+  offlineMode = nextOffline;
+  setConnectivityPill(offlineMode ? 'warn' : 'ok', offlineMode ? 'Offline' : 'Online');
+  if (offlineMode) {
+    setRequestStatusPill('warn', 'Offline — reconnect for live commands');
+  } else if (!commandInFlight && !runAllInProgress) {
+    setRequestStatusPill('ok', 'Requests idle');
+    scheduleAuthSessionRefresh({ immediate: true });
+  }
+  syncLiveActionAvailability();
+  if (announce || changed) {
+    showToast(
+      offlineMode
+        ? 'Live commands are temporarily disabled until the connection returns.'
+        : 'Connection restored. Live commands are available again.',
+      { kind: offlineMode ? 'warn' : 'success', title: offlineMode ? 'OFFLINE' : 'ONLINE' },
+    );
+  }
 }
 
 function extractUrlsFromText(text) {
@@ -424,6 +738,7 @@ function extractMediaUrlFromLines(lines, commandName = '') {
 
 function openLastMedia() {
   if (!lastMediaUrl) return;
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before opening remote media URLs.' })) return;
   window.open(lastMediaUrl, '_blank', 'noopener');
 }
 
@@ -451,6 +766,7 @@ function getMediaDownloadFilename(url) {
 
 async function saveLastMedia() {
   if (!lastMediaUrl) return;
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before saving remote media.' })) return;
   const filename = getMediaDownloadFilename(lastMediaUrl);
   try {
     const res = await fetchWithTimeout(lastMediaUrl, { method: 'GET' }, API_TIMEOUT_MS);
@@ -459,13 +775,13 @@ async function saveLastMedia() {
     const objectUrl = URL.createObjectURL(blob);
     try {
       triggerDownload(objectUrl, filename);
-      setTargetValidation('Saved latest media locally.');
+      showToast('Saved latest media locally.', { kind: 'success' });
     } finally {
       setTimeout(() => URL.revokeObjectURL(objectUrl), 200);
     }
   } catch (_) {
     triggerDownload(lastMediaUrl, filename);
-    setTargetValidation('Direct download fallback used for latest media.');
+    showToast('Direct download fallback used for latest media.', { kind: 'warn' });
   }
 }
 
@@ -473,16 +789,16 @@ async function copyLastMediaUrl() {
   if (!lastMediaUrl) return;
   try {
     await navigator.clipboard.writeText(lastMediaUrl);
-    setTargetValidation('Copied latest media URL to clipboard.');
+    showToast('Copied latest media URL to clipboard.', { kind: 'success' });
   } catch (_) {
-    setTargetValidation('Unable to copy media URL.');
+    showToast('Unable to copy media URL.', { kind: 'error' });
   }
 }
 
 function createEmptyProfileSummaryState(overrides = {}) {
   return {
     status: 'idle',
-    statusText: 'Enter a username and backend URL to fetch a verified Instagram ID and profile image.',
+    statusText: 'Enter a username and backend or personal-login bridge URL to fetch a verified Instagram ID and profile image.',
     username: '',
     instagramId: '',
     profileImageUrl: '',
@@ -669,20 +985,302 @@ function preloadImage(url) {
 }
 
 function validateApiBaseUrl(base) {
-  if (!base) return 'Set backend URL first';
+  if (!base) return MISSING_API_URL_MESSAGE;
   try {
     const parsed = new URL(base);
-    if (!['http:', 'https:'].includes(parsed.protocol)) return 'Use http:// or https:// backend URL';
+    if (!['http:', 'https:'].includes(parsed.protocol)) return 'Use http:// or https:// for the backend/bridge URL';
   } catch (_) {
-    return 'Invalid backend URL format';
+    return 'Invalid backend or bridge URL format';
   }
   return '';
+}
+
+function renderDefaultApiConfig() {
+  const note = document.getElementById('default-api-url-note');
+  const applyBtn = document.getElementById('apply-default-api-btn');
+  const clearBtn = document.getElementById('clear-default-api-btn');
+  const savedDefault = normalizeApiUrlValue(appConfig.defaultApiUrl);
+  if (note) {
+    note.textContent = savedDefault
+      ? `Saved default API URL: ${savedDefault}`
+      : 'No default API URL saved yet.';
+  }
+  if (applyBtn) applyBtn.disabled = !savedDefault;
+  if (clearBtn) clearBtn.disabled = !savedDefault;
+}
+
+function syncApiInputState({ validateOnBlur = false } = {}) {
+  const apiInput = document.getElementById('api-url-input');
+  if (!apiInput) return { normalized: '', error: 'API input unavailable' };
+  const normalized = normalizeApiUrlValue(apiInput.value);
+  apiInput.value = normalized;
+  persistApiBaseUrl(normalized);
+  setLiveModePill();
+  scheduleApiHealthCheck();
+  scheduleAuthSessionRefresh();
+  scheduleIdentitySummaryRefresh();
+  const error = normalized ? validateApiBaseUrl(normalized) : '';
+  if (validateOnBlur) setTargetValidation(error);
+  return { normalized, error };
+}
+
+function saveDefaultApiUrl() {
+  const { normalized, error } = syncApiInputState({ validateOnBlur: true });
+  if (error) return;
+  appConfig.defaultApiUrl = normalized;
+  persistAppConfig();
+  renderDefaultApiConfig();
+  showToast(normalized ? 'Saved default API URL.' : 'Cleared default API URL.', { kind: 'success' });
+}
+
+function applyDefaultApiUrl() {
+  const apiInput = document.getElementById('api-url-input');
+  const savedDefault = normalizeApiUrlValue(appConfig.defaultApiUrl);
+  if (!apiInput || !savedDefault) {
+    showToast('No saved default API URL yet.', { kind: 'warn' });
+    return;
+  }
+  apiInput.value = savedDefault;
+  syncApiInputState({ validateOnBlur: true });
+  showToast('Loaded saved default API URL.', { kind: 'success' });
+}
+
+function clearDefaultApiUrl() {
+  appConfig.defaultApiUrl = '';
+  persistAppConfig();
+  renderDefaultApiConfig();
+  showToast('Cleared saved default API URL.', { kind: 'success' });
+}
+
+function readAuthFormValues() {
+  const usernameInput = document.getElementById('auth-username-input');
+  const passwordInput = document.getElementById('auth-password-input');
+  const cookieInput = document.getElementById('auth-cookie-input');
+  return {
+    username: (usernameInput?.value || '').trim().replace(/^@/, ''),
+    password: passwordInput?.value || '',
+    cookies: (cookieInput?.value || '').trim(),
+  };
+}
+
+function clearAuthSecrets() {
+  const passwordInput = document.getElementById('auth-password-input');
+  const cookieInput = document.getElementById('auth-cookie-input');
+  if (passwordInput) passwordInput.value = '';
+  if (cookieInput) cookieInput.value = '';
+}
+
+function scheduleAuthSessionRefresh({ immediate = false } = {}) {
+  if (authSessionRefreshDebounceId) {
+    clearTimeout(authSessionRefreshDebounceId);
+    authSessionRefreshDebounceId = null;
+  }
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (!base || baseErr) {
+    activeAuthSessionRequestId += 1;
+    setAuthSessionState(createEmptyAuthSessionState({
+      available: false,
+      statusText: baseErr || 'Connect a backend URL to check authentication state.',
+      checkedAt: '',
+    }));
+    return;
+  }
+  if (!canUseLiveBackend()) {
+    activeAuthSessionRequestId += 1;
+    setAuthSessionState(createEmptyAuthSessionState({
+      available: false,
+      statusText: OFFLINE_MESSAGE,
+      checkedAt: '',
+    }));
+    return;
+  }
+  const trigger = () => apiClient.loadAuthSession();
+  if (immediate) {
+    trigger();
+    return;
+  }
+  authSessionRefreshDebounceId = setTimeout(trigger, AUTH_SESSION_REFRESH_DEBOUNCE_MS);
+}
+
+async function loadAuthSession(options = {}) {
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (!base || baseErr) {
+    setAuthSessionState(createEmptyAuthSessionState({
+      available: false,
+      statusText: baseErr || 'Connect a backend URL to check authentication state.',
+      checkedAt: '',
+    }));
+    return authSessionState;
+  }
+  if (!canUseLiveBackend()) {
+    setAuthSessionState(createEmptyAuthSessionState({
+      available: false,
+      statusText: OFFLINE_MESSAGE,
+      checkedAt: '',
+    }));
+    return authSessionState;
+  }
+
+  const requestId = ++activeAuthSessionRequestId;
+  authRequestInFlight = true;
+  setAuthSessionState({
+    status: 'loading',
+    available: true,
+    statusText: options.manual ? 'Refreshing backend authentication status...' : 'Checking backend authentication status...',
+  });
+
+  try {
+    const url = new URL('/api/session', `${base}/`);
+    const response = await fetchJsonWithTimeout(url.toString(), { method: 'GET' }, API_TIMEOUT_MS);
+    if (!response.ok) throw createHttpStatusError(response);
+    const data = await parseJsonResponseStrict(response);
+    if (requestId !== activeAuthSessionRequestId) return authSessionState;
+    const authenticated = data?.authenticated === true;
+    const username = String(data?.username || '').trim().replace(/^@/, '');
+    setAuthSessionState({
+      status: authenticated ? 'ready' : 'signed-out',
+      authenticated,
+      available: true,
+      username,
+      source: formatAuthSourceLabel(data?.source || data?.mode || ''),
+      statusText: authenticated
+        ? `Backend session is authenticated${username ? ` as @${username}` : ''}.${data?.source ? ` Source: ${formatAuthSourceLabel(data.source)}.` : ''}`
+        : String(data?.message || 'Backend session is signed out. Public-profile requests remain available.'),
+      checkedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    if (requestId !== activeAuthSessionRequestId) return authSessionState;
+    const detail = err?.status ? `HTTP ${err.status}` : 'Backend session check failed.';
+    setAuthSessionState(createEmptyAuthSessionState({
+      status: 'error',
+      available: false,
+      statusText: `Unable to read backend auth status (${detail}).`,
+      checkedAt: '',
+    }));
+  } finally {
+    authRequestInFlight = false;
+    renderAuthSessionState();
+  }
+  return authSessionState;
+}
+
+async function loginBackendSession(payload = {}) {
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
+    showToast(baseErr, { kind: 'warn', title: 'AUTH' });
+    return { ok: false, errorMessage: baseErr };
+  }
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before signing in.' })) {
+    return { ok: false, errorMessage: OFFLINE_MESSAGE };
+  }
+  authRequestInFlight = true;
+  renderAuthSessionState();
+  try {
+    const url = new URL('/api/login', `${base}/`);
+    const response = await fetchJsonWithTimeout(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }, API_TIMEOUT_MS);
+    if (!response.ok) throw createHttpStatusError(response);
+    const data = await parseJsonResponseStrict(response);
+    clearAuthSecrets();
+    await loadAuthSession({ manual: true });
+    return { ok: true, data };
+  } catch (err) {
+    const message = err?.status === 401 || err?.status === 403
+      ? 'Backend rejected the Instagram credentials or cookies.'
+      : err?.status
+        ? `Backend login failed with HTTP ${err.status}.`
+        : 'Backend login failed.';
+    showToast(message, { kind: 'error', title: 'AUTH' });
+    setAuthSessionState(createEmptyAuthSessionState({
+      status: 'error',
+      available: true,
+      statusText: message,
+    }));
+    return { ok: false, errorMessage: message };
+  } finally {
+    authRequestInFlight = false;
+    renderAuthSessionState();
+  }
+}
+
+async function logoutBackendSession() {
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
+    showToast(baseErr, { kind: 'warn', title: 'AUTH' });
+    return { ok: false, errorMessage: baseErr };
+  }
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before signing out.' })) {
+    return { ok: false, errorMessage: OFFLINE_MESSAGE };
+  }
+  authRequestInFlight = true;
+  renderAuthSessionState();
+  try {
+    const url = new URL('/api/logout', `${base}/`);
+    const response = await fetchJsonWithTimeout(url.toString(), { method: 'POST' }, API_TIMEOUT_MS);
+    if (!response.ok) throw createHttpStatusError(response);
+    clearAuthSecrets();
+    setAuthSessionState(createEmptyAuthSessionState({
+      status: 'signed-out',
+      available: true,
+      statusText: 'Backend session signed out. Public-profile requests remain available.',
+      checkedAt: new Date().toISOString(),
+    }));
+    return { ok: true };
+  } catch (err) {
+    const message = err?.status ? `Backend logout failed with HTTP ${err.status}.` : 'Backend logout failed.';
+    showToast(message, { kind: 'error', title: 'AUTH' });
+    return { ok: false, errorMessage: message };
+  } finally {
+    authRequestInFlight = false;
+    renderAuthSessionState();
+  }
+}
+
+async function submitAuthLogin() {
+  const { username, password, cookies } = readAuthFormValues();
+  if (!username) {
+    showToast('Enter an Instagram username for the backend session.', { kind: 'warn', title: 'AUTH' });
+    return;
+  }
+  if (!password && !cookies) {
+    showToast('Enter either a password or session cookies before signing in.', { kind: 'warn', title: 'AUTH' });
+    return;
+  }
+  const result = await apiClient.login({ username, password, cookies });
+  if (result.ok) {
+    showToast('Backend session established.', { kind: 'success', title: 'AUTH' });
+    scheduleIdentitySummaryRefresh();
+  }
+}
+
+async function submitAuthLogout() {
+  const result = await apiClient.logout();
+  if (result.ok) {
+    showToast('Backend session cleared.', { kind: 'success', title: 'AUTH' });
+    scheduleIdentitySummaryRefresh();
+  }
+}
+
+function refreshAuthSession() {
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before refreshing auth status.' })) return;
+  apiClient.loadAuthSession({ manual: true });
 }
 
 function scheduleApiHealthCheck() {
   if (apiHealthDebounceId) {
     clearTimeout(apiHealthDebounceId);
     apiHealthDebounceId = null;
+  }
+  if (!canUseLiveBackend()) {
+    setApiHealthPill('warn', 'Offline');
+    return;
   }
   const base = getApiBaseUrl();
   const err = validateApiBaseUrl(base);
@@ -702,14 +1300,95 @@ function tryAcquireCommandLock() {
   return true;
 }
 
-async function waitForBatchDelay(delayMs) {
+async function waitForDelay(delayMs, { allowCancel = false, onTick } = {}) {
   const end = Date.now() + delayMs;
+  let lastReportedSecond = null;
   while (Date.now() < end) {
-    if (cancelRunAll) return false;
-    const step = Math.min(100, Math.max(20, end - Date.now()));
+    if (allowCancel && cancelRunAll) return false;
+    const remainingMs = Math.max(0, end - Date.now());
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    if (onTick && remainingSeconds !== lastReportedSecond) {
+      lastReportedSecond = remainingSeconds;
+      onTick(remainingMs, remainingSeconds);
+    }
+    const step = Math.min(100, Math.max(20, remainingMs));
     await new Promise(resolve => setTimeout(resolve, step));
   }
-  return !cancelRunAll;
+  if (onTick) onTick(0, 0);
+  return !(allowCancel && cancelRunAll);
+}
+
+async function waitForBatchDelay(delayMs) {
+  return waitForDelay(delayMs, { allowCancel: true });
+}
+
+function createConcurrencyLimiter(limit) {
+  const parsedLimit = Number(limit);
+  const maxConcurrent = Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.floor(parsedLimit))
+    : 1;
+  let activeCount = 0;
+  const queue = [];
+
+  const runNext = () => {
+    if (activeCount >= maxConcurrent || !queue.length) return;
+    const next = queue.shift();
+    if (typeof next.shouldStart === 'function' && !next.shouldStart()) {
+      next.resolve(null);
+      runNext();
+      return;
+    }
+    activeCount += 1;
+    Promise.resolve()
+      .then(next.task)
+      .then(next.resolve, next.reject)
+      .finally(() => {
+        activeCount -= 1;
+        runNext();
+      });
+  };
+
+  return (task, shouldStart) => new Promise((resolve, reject) => {
+    queue.push({ task, shouldStart, resolve, reject });
+    runNext();
+  });
+}
+
+function createBatchStartScheduler(delayMs) {
+  const waitMs = Math.max(0, Number(delayMs) || 0);
+  let previousStart = Promise.resolve();
+  let first = true;
+  return async () => {
+    const prior = previousStart;
+    let release;
+    previousStart = new Promise(resolve => {
+      release = resolve;
+    });
+    await prior;
+    try {
+      return waitForDelay(first ? 0 : waitMs, { allowCancel: true });
+    } finally {
+      first = false;
+      release();
+    }
+  };
+}
+
+async function prefetchBatchCommandLines(commands, target) {
+  const limit = createConcurrencyLimiter(BATCH_FETCH_CONCURRENCY);
+  const waitForBatchStart = createBatchStartScheduler(batchDelayMs);
+  return Promise.all(commands.map((command, index) => (async () => {
+    const shouldContinue = await waitForBatchStart();
+    if (!shouldContinue) return { command, cancelled: true };
+    if (cancelRunAll) return { command, cancelled: true };
+    const lines = await limit(async () => {
+      setRequestStatusPill('warn', `Fetching ${command.name} (${index + 1}/${commands.length})...`);
+      return apiClient.fetchLiveLines(target, command.name);
+    }, () => !cancelRunAll);
+    return lines !== null && typeof lines !== 'undefined'
+      ? { command, lines }
+      : { command, cancelled: true };
+  })()));
 }
 
 function isEditableElement(target) {
@@ -719,27 +1398,69 @@ function isEditableElement(target) {
 }
 
 function parseLiveOutputLines(data) {
-  if (Array.isArray(data?.lines) && data.lines.every(l =>
-    Array.isArray(l)
-    && l.length === 2
-    && typeof l[0] === 'string'
-    && LIVE_LINE_TYPES.has(l[0])
-    && typeof l[1] === 'string'
-  )) {
-    return data.lines;
+  const lines = [];
+
+  if (Array.isArray(data?.lines)) {
+    data.lines.forEach(line => {
+      if (!Array.isArray(line) || line.length !== 2 || typeof line[0] !== 'string') return;
+      const type = LIVE_LINE_TYPES.has(line[0]) ? line[0] : 'result';
+      const value = line[1];
+      if (typeof value === 'string') {
+        const parsed = type === 'result' ? tryParseJsonString(value) : null;
+        if (parsed !== null) lines.push(['json', stringifyStructuredValue(parsed)]);
+        else lines.push([type, value.length ? value : ' ']);
+        return;
+      }
+      if (value && typeof value === 'object') {
+        appendStructuredValueLines(lines, value, { preferredType: 'json' });
+      } else {
+        lines.push([type, String(value ?? ' ')]);
+      }
+    });
   }
 
   let rawOutput = data?.output;
   if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') {
     rawOutput = data?.result;
   }
-  if (typeof rawOutput === 'undefined' || rawOutput === null || rawOutput === '') return [];
+  if ((typeof rawOutput !== 'undefined' && rawOutput !== null && rawOutput !== '') && !lines.length) {
+    const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
+    normalized.forEach(item => {
+      if (item && typeof item === 'object') appendStructuredValueLines(lines, item, { preferredType: 'json' });
+      else {
+        const text = String(item);
+        const parsed = tryParseJsonString(text);
+        lines.push(parsed !== null ? ['json', stringifyStructuredValue(parsed)] : ['result', text.length ? text : ' ']);
+      }
+    });
+  }
 
-  const normalized = Array.isArray(rawOutput) ? rawOutput : String(rawOutput).split('\n');
-  return normalized.map(s => {
-    const text = String(s);
-    return ['result', text.length ? text : ' '];
-  });
+  if (Array.isArray(data?.metadata_tables)) {
+    data.metadata_tables.forEach((table, index) => {
+      const title = table?.title ? `Metadata table ${index + 1}: ${table.title}` : `Metadata table ${index + 1}`;
+      appendStructuredValueLines(lines, table, { title, preferredType: 'table' });
+    });
+  }
+
+  if (typeof data?.metadata !== 'undefined' && data?.metadata !== null) {
+    appendStructuredValueLines(lines, data.metadata, { title: 'Structured metadata', preferredType: 'json' });
+  }
+
+  if (isPlainObject(data?.download_summary)) {
+    const summaryRows = [
+      { metric: 'output_dir', value: data.download_summary.output_dir || '' },
+      { metric: 'total', value: data.download_summary.total ?? '' },
+      { metric: 'downloaded', value: data.download_summary.downloaded ?? '' },
+      { metric: 'skipped', value: data.download_summary.skipped ?? '' },
+      { metric: 'failed', value: data.download_summary.failed ?? '' },
+    ];
+    appendStructuredValueLines(lines, summaryRows, { title: 'Download summary', preferredType: 'table' });
+    if (Array.isArray(data.download_summary.items) && data.download_summary.items.length) {
+      appendStructuredValueLines(lines, data.download_summary.items, { title: 'Download items', preferredType: 'table' });
+    }
+  }
+
+  return lines;
 }
 
 function setTargetValidation(message = '') {
@@ -768,12 +1489,17 @@ function getValidatedTarget() {
 async function fetchLiveLines(target, cmd) {
   const result = await requestLiveCommandPayload(target, cmd);
   if (!result.ok) {
+    showToast(result.errorMessage, { kind: result.type === 'rate-limit' ? 'warn' : 'error', title: 'COMMAND UPDATE' });
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
       ['warn', `[!] ${result.errorMessage}`],
       ['info', result.type === 'config'
         ? '  Update Backend API URL, then run the command again.'
+        : result.type === 'rate-limit'
+          ? '  Rate limit exceeded. An automatic retry was attempted, but the limit still persists.'
+        : result.type === 'offline'
+          ? '  Browser is offline. Reconnect before retrying this live command.'
         : result.type === 'empty'
           ? '  Backend responded, but no usable output was returned.'
           : autoRetryEnabled
@@ -791,10 +1517,15 @@ async function fetchLiveLines(target, cmd) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
+  if (offlineMode) {
+    const err = new Error(OFFLINE_MESSAGE);
+    err.name = 'OfflineError';
+    throw err;
+  }
   if (!SUPPORTS_ABORT_CONTROLLER) {
     // Older browsers cannot cancel the underlying request, so we reject locally and ignore any late response.
     return Promise.race([
-      fetch(url, options),
+        fetch(url, { credentials: 'include', ...options }),
       new Promise((_, reject) => {
         setTimeout(() => {
           const err = new Error('Timed out');
@@ -807,14 +1538,14 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(url, { credentials: 'include', ...options, signal: controller.signal });
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-async function fetchJsonWithTimeout(url, timeoutMs = API_TIMEOUT_MS) {
-  return fetchWithTimeout(url, { method: 'GET' }, timeoutMs);
+async function fetchJsonWithTimeout(url, options = { method: 'GET' }, timeoutMs = API_TIMEOUT_MS) {
+  return fetchWithTimeout(url, options, timeoutMs);
 }
 
 async function parseJsonResponseStrict(response) {
@@ -830,13 +1561,52 @@ function isInvalidJsonError(err) {
   return /^Invalid JSON response/.test(err?.message || '');
 }
 
+function createHttpStatusError(response) {
+  const message = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+  const err = new Error(message);
+  err.status = response.status;
+  return err;
+}
+
+function getRateLimitBackoffMs(response) {
+  const raw = response?.headers?.get('retry-after') || '';
+  const numericSeconds = Number(raw);
+  if (Number.isFinite(numericSeconds) && numericSeconds >= 0) {
+    return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, Math.round(numericSeconds * 1000)));
+  }
+  const retryAt = raw && !Number.isFinite(numericSeconds) ? Date.parse(raw) : Number.NaN;
+  if (Number.isFinite(retryAt) && retryAt > Date.now()) {
+    return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, retryAt - Date.now()));
+  }
+  // Past or invalid date values fall back to the default cooldown window.
+  return DEFAULT_RATE_LIMIT_BACKOFF_MS;
+}
+
+async function handleRateLimitBackoff(response, cmd) {
+  const waitMs = getRateLimitBackoffMs(response);
+  const safeCmd = String(cmd || '').trim();
+  const label = safeCmd ? ` for ${safeCmd}` : '';
+  const continued = await waitForDelay(waitMs, {
+    onTick: (_, remainingSeconds) => {
+      if (remainingSeconds > 0) {
+        setRequestStatusPill('warn', `Rate limited${label}, retrying in ${remainingSeconds}s`);
+      }
+    },
+  });
+  if (!continued) return false;
+  setRequestStatusPill('warn', `Retrying ${safeCmd || 'request'} after rate limit...`);
+  return true;
+}
+
 async function requestLiveCommandPayload(target, cmd, options = {}) {
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
   if (baseErr) return { ok: false, type: 'config', errorMessage: baseErr };
+  if (!canUseLiveBackend()) return { ok: false, type: 'offline', errorMessage: OFFLINE_MESSAGE };
   if (useCacheEnabled && !options.skipCache) {
     const cached = getCachedLiveLines(target, cmd);
     if (cached && cached.length) {
+      setRequestStatusPill('ok', `Using cached response for ${cmd}`);
       return { ok: true, lines: cached, source: 'cache', attempt: 0, data: { output: cached.map(([, text]) => text) } };
     }
   }
@@ -844,43 +1614,71 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   url.searchParams.set('target', target);
   url.searchParams.set('command', cmd);
   const maxAttempts = autoRetryEnabled ? LIVE_FETCH_TOTAL_ATTEMPTS : 1;
-  let attempt = 0;
   let lastError = null;
-  while (attempt < maxAttempts) {
-    attempt += 1;
-    try {
-      const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-      const data = await parseJsonResponseStrict(response);
-      const payload = parseLiveOutputLines(data);
-      if (!hasMeaningfulOutput(payload)) {
-        return { ok: false, type: 'empty', errorMessage: 'Live backend returned no output', data };
+  let rateLimitRetryUsed = false;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let retryAfterRateLimit = false;
+    do {
+      retryAfterRateLimit = false;
+      try {
+        setRequestStatusPill('warn', `Requesting ${cmd}...`);
+        const response = await fetchJsonWithTimeout(url.toString(), { method: 'GET' }, API_TIMEOUT_MS);
+        if (response.status === 429) {
+          lastError = createHttpStatusError(response);
+          if (!rateLimitRetryUsed) {
+            rateLimitRetryUsed = true;
+            const resumed = await handleRateLimitBackoff(response, cmd);
+            if (!resumed) return { ok: false, type: 'rate-limit', errorMessage: 'Rate-limit backoff was interrupted' };
+            retryAfterRateLimit = true;
+            continue;
+          }
+          throw lastError;
+        }
+        if (!response.ok) throw createHttpStatusError(response);
+        const data = await parseJsonResponseStrict(response);
+        const payload = parseLiveOutputLines(data);
+        if (!hasMeaningfulOutput(payload)) {
+          setRequestStatusPill('warn', `Backend returned no usable output for ${cmd}`);
+          return { ok: false, type: 'empty', errorMessage: 'Live backend returned no output', data };
+        }
+        if (useCacheEnabled) setCachedLiveLines(target, cmd, payload);
+        setRequestStatusPill('ok', `Latest live request: ${cmd}`);
+        return { ok: true, lines: payload, source: 'live', attempt, data };
+      } catch (err) {
+        lastError = err;
+        if (err?.status === 429 || attempt >= maxAttempts) break;
       }
-      if (useCacheEnabled) setCachedLiveLines(target, cmd, payload);
-      return { ok: true, lines: payload, source: 'live', attempt, data };
-    } catch (err) {
-      lastError = err;
-      if (attempt < maxAttempts) continue;
-    }
+    } while (retryAfterRateLimit);
+    if (lastError?.status === 429) break;
   }
   const msg = lastError?.name === 'AbortError'
     ? 'request timed out'
+    : lastError?.name === 'OfflineError'
+      ? 'browser is offline'
+    : lastError?.status === 429
+      ? 'rate limited by backend (HTTP 429)'
     : isInvalidJsonError(lastError)
       ? lastError.message
       : 'connection error';
-  return { ok: false, type: 'network', errorMessage: `Live request failed: ${msg}` };
+  setRequestStatusPill(lastError?.status === 429 ? 'warn' : 'error', lastError?.status === 429 ? 'Rate limit still active' : `Request failed for ${cmd}`);
+  return {
+    ok: false,
+    type: lastError?.status === 429 ? 'rate-limit' : lastError?.name === 'OfflineError' ? 'offline' : 'network',
+    errorMessage: `Live request failed: ${msg}`,
+  };
 }
 
 async function requestProfileSummaryEndpoint(target) {
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
   if (baseErr) return { ok: false, reason: baseErr };
+  if (!canUseLiveBackend()) return { ok: false, reason: OFFLINE_MESSAGE };
   let lastReason = 'No dedicated profile summary endpoint responded.';
   for (const endpoint of IDENTITY_ENDPOINTS) {
     try {
       const url = new URL(endpoint, `${base}/`);
       url.searchParams.set('target', target);
-      const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
+      const response = await fetchJsonWithTimeout(url.toString(), { method: 'GET' }, API_TIMEOUT_MS);
       if (!response.ok) {
         lastReason = `Profile summary endpoint responded ${response.status}`;
         continue;
@@ -938,6 +1736,10 @@ async function loadProfileSummary(target, options = {}) {
   const baseErr = validateApiBaseUrl(getApiBaseUrl());
   if (validationError) {
     setProfileSummaryState(createEmptyProfileSummaryState({ statusText: validationError, username: expectedTarget }));
+    return null;
+  }
+  if (!canUseLiveBackend()) {
+    setProfileSummaryState(createEmptyProfileSummaryState({ statusText: OFFLINE_MESSAGE, username: expectedTarget }));
     return null;
   }
   if (baseErr) {
@@ -1044,6 +1846,13 @@ function scheduleIdentitySummaryRefresh() {
     return;
   }
   const validationError = validateTarget(target);
+  if (!canUseLiveBackend()) {
+    setProfileSummaryState(createEmptyProfileSummaryState({
+      username: target,
+      statusText: OFFLINE_MESSAGE,
+    }));
+    return;
+  }
   const baseErr = validateApiBaseUrl(getApiBaseUrl());
   if (validationError || baseErr) {
     setProfileSummaryState(createEmptyProfileSummaryState({
@@ -1063,6 +1872,7 @@ function refreshIdentitySummary() {
     setTargetValidation('Enter a target username first.');
     return;
   }
+  if (!canUseLiveBackend({ notify: true })) return;
   apiClient.loadProfileSummary(target, { manual: true });
 }
 
@@ -1160,14 +1970,14 @@ function clearRecentTargets() {
   recentTargets = [];
   persistRecentTargets();
   renderRecentTargets();
-  setTargetValidation('Recent targets cleared.');
+  showToast('Recent targets cleared.', { kind: 'success' });
 }
 
 function clearRecentCommands() {
   recentCommands = [];
   persistRecentCommands();
   renderRecentCommands();
-  setTargetValidation('Recent commands cleared.');
+  showToast('Recent commands cleared.', { kind: 'success' });
 }
 
 function renderRecentTargets() {
@@ -1206,21 +2016,40 @@ function setApiHealthPill(status, text) {
   else pill.innerHTML = `<span class="dot dot-red"></span>${text}`;
 }
 
+function setRequestStatusPill(status, text) {
+  const pill = document.getElementById('request-status-pill');
+  if (!pill) return;
+  if (status === 'ok') pill.innerHTML = `<span class="dot dot-green"></span>${text}`;
+  else if (status === 'warn') pill.innerHTML = `<span class="dot dot-yellow"></span>${text}`;
+  else pill.innerHTML = `<span class="dot dot-red"></span>${text}`;
+}
+
 async function checkApiHealth() {
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before checking API health.' })) {
+    setApiHealthPill('warn', 'Offline');
+    return;
+  }
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
   if (baseErr) {
     setApiHealthPill('warn', baseErr);
+    showToast(baseErr, { kind: 'warn', title: 'API CHECK' });
     return;
   }
   const btn = document.getElementById('api-health-btn');
   if (btn) btn.disabled = true;
   try {
     const res = await fetchWithTimeout(`${base}/api/health`, { method: 'GET' }, API_HEALTH_CHECK_TIMEOUT_MS);
-    if (res.ok) setApiHealthPill('ok', 'API reachable');
-    else setApiHealthPill('warn', `API responded ${res.status}`);
+    if (res.ok) {
+      setApiHealthPill('ok', 'API reachable');
+      showToast('API health check succeeded.', { kind: 'success', title: 'API CHECK' });
+    } else {
+      setApiHealthPill('warn', `API responded ${res.status}`);
+      showToast(`API health check responded with HTTP ${res.status}.`, { kind: 'warn', title: 'API CHECK' });
+    }
   } catch (_) {
     setApiHealthPill('error', 'API unreachable');
+    showToast('API health check failed. The backend is unreachable.', { kind: 'error', title: 'API CHECK' });
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1244,13 +2073,17 @@ function resetTerminal() {
 
 function clearTerminal() {
   resetTerminal();
+  showToast('Terminal reset to its initial state.', { kind: 'info' });
 }
 
 function exportTerminal() {
   const body = document.getElementById('terminal-body');
   if (!body) return;
   const text = Array.from(body.children).map(el => el.textContent || '').join('\n').trim();
-  if (!text) return;
+  if (!text) {
+    showToast('Nothing to export from the terminal yet.', { kind: 'warn' });
+    return;
+  }
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1261,6 +2094,7 @@ function exportTerminal() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  showToast('Exported terminal output to a text file.', { kind: 'success' });
 }
 
 function formatTimestampForFilename() {
@@ -1269,12 +2103,12 @@ function formatTimestampForFilename() {
 
 async function retryLastCommand() {
   if (!lastRunContext) {
-    setTargetValidation('No previous command to retry yet.');
+    showToast('No previous command to retry yet.', { kind: 'warn' });
     return;
   }
   const cmd = COMMANDS.find(c => c.id === lastRunContext.commandId);
   if (!cmd) {
-    setTargetValidation('Last command is no longer available.');
+    showToast('Last command is no longer available.', { kind: 'error' });
     return;
   }
   const tInput = document.getElementById('target-input');
@@ -1283,11 +2117,12 @@ async function retryLastCommand() {
 }
 
 async function runFirstVisibleCommand() {
+  if (!canUseLiveBackend({ notify: true })) return;
   const target = getValidatedTarget();
   if (!target) return;
   const visible = getVisibleCommands();
   if (!visible.length) {
-    setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
+    showToast('No commands match the current filters. Try adjusting the category or search query.', { kind: 'warn' });
     return;
   }
   await runCommand(visible[0], target);
@@ -1303,39 +2138,35 @@ function setRunAllButtonState(running) {
 
 function setCommandBusyState(isBusy) {
   commandInFlight = isBusy;
-  document.querySelectorAll('.command-card').forEach(card => {
-    card.classList.toggle('command-card-disabled', isBusy);
-    card.setAttribute('aria-disabled', isBusy ? 'true' : 'false');
-    card.setAttribute('tabindex', isBusy ? '-1' : '0');
-  });
-  const diveBtn = document.getElementById('dive-btn');
-  if (diveBtn) diveBtn.disabled = isBusy;
-  const retryBtn = document.getElementById('retry-btn');
-  if (retryBtn) retryBtn.disabled = isBusy;
-  const apiHealthBtn = document.getElementById('api-health-btn');
-  if (apiHealthBtn) apiHealthBtn.disabled = isBusy;
-  const runFirstBtn = document.getElementById('run-first-btn');
-  if (runFirstBtn) runFirstBtn.disabled = isBusy;
-  const runAllBtn = document.getElementById('run-all-btn');
-  if (runAllBtn && !runAllInProgress) runAllBtn.disabled = isBusy;
-  const clearCacheBtn = document.getElementById('clear-cache-btn');
-  if (clearCacheBtn) clearCacheBtn.disabled = isBusy;
-  const refreshIdentityBtn = document.getElementById('refresh-identity-btn');
-  if (refreshIdentityBtn) refreshIdentityBtn.disabled = isBusy || profileSummaryState.status === 'loading';
-  ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn && !lastMediaUrl) btn.disabled = true;
-  });
+  syncLiveActionAvailability();
+}
+
+async function presentCommandLines(command, target, lines) {
+  document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
+  const el = document.querySelector(`.command-card[data-id="${command.id}"]`);
+  if (el) el.classList.add('active-card');
+  const mediaUrl = extractMediaUrlFromLines(lines, command.name);
+  if (mediaUrl) {
+    setLastMediaUrl(mediaUrl);
+    showToast(`Detected media URL from ${command.name}. Use OPEN, SAVE, or COPY MEDIA URL.`, { kind: 'info' });
+  }
+  registerCommandRun(command, target);
+  addRecentTarget(target);
+  addRecentCommand(command.id, target);
+  await animateOutput(lines);
+  renderCards();
+  document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 async function runCommand(c, providedTarget = null) {
+  if (!canUseLiveBackend({ notify: true })) return;
   if (!tryAcquireCommandLock()) {
-    setTargetValidation('A command is already running. Please wait for it to finish.');
+    showToast('A command is already running. Please wait for it to finish.', { kind: 'warn' });
     return;
   }
   if (!allowContactCommands && isContactCommand(c)) {
     commandInFlight = false;
-    setTargetValidation('Contact commands are safety-locked. Enable "Allow contact commands" to continue.');
+    showToast('Contact commands are safety-locked. Enable "Allow contact commands" to continue.', { kind: 'warn' });
     return;
   }
   const target = providedTarget ?? getValidatedTarget();
@@ -1345,27 +2176,15 @@ async function runCommand(c, providedTarget = null) {
   }
   setCommandBusyState(true);
   try {
-    document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
-    const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
-    if (el) el.classList.add('active-card');
     const lines = await apiClient.fetchLiveLines(target, c.name);
-    const mediaUrl = extractMediaUrlFromLines(lines, c.name);
-    if (mediaUrl) {
-      setLastMediaUrl(mediaUrl);
-      setTargetValidation(`Detected media URL from ${c.name}. Use OPEN/SAVE/COPY MEDIA.`);
-    }
-    registerCommandRun(c, target);
-    addRecentTarget(target);
-    addRecentCommand(c.id, target);
-    await animateOutput(lines);
-    renderCards();
-    document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
+    await presentCommandLines(c, target, lines);
   } finally {
     setCommandBusyState(false);
   }
 }
 
 function startScan() {
+  if (!canUseLiveBackend({ notify: true })) return;
   const target = getValidatedTarget();
   if (!target) return;
   apiClient.loadProfileSummary(target);
@@ -1381,7 +2200,7 @@ function startScan() {
       ['result',  `  Checking if account is public…`],
       ['success', `  [✔] @${target} is accessible`],
       ['info',    `  Ready — click any command card to begin your dive.`],
-      ['dim',     `  ── 20 commands available ──`],
+      ['dim',     `  ── ${COMMANDS.length} commands available ──`],
     ]);
     document.querySelector('.commands-grid').scrollIntoView({ behavior:'smooth', block:'start' });
   }, 1200);
@@ -1390,42 +2209,49 @@ function startScan() {
 async function runAllVisibleCommands() {
   if (runAllInProgress) {
     cancelRunAll = true;
-    setTargetValidation('Stopping batch run after current command...');
+    showToast('Stopping batch run after the current command...', { kind: 'warn' });
+    return;
+  }
+  if (!canUseLiveBackend({ notify: true })) return;
+  if (commandInFlight) {
+    showToast('A command is already running. Please wait for it to finish.', { kind: 'warn' });
     return;
   }
   const target = getValidatedTarget();
   if (!target) return;
   const visible = getVisibleCommands();
   if (!visible.length) {
-    setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
+    showToast('No commands match the current filters. Try adjusting the category or search query.', { kind: 'warn' });
     return;
   }
   const runnable = allowContactCommands ? visible : visible.filter(c => !isContactCommand(c));
   if (!runnable.length) {
-    setTargetValidation('All visible commands are contact commands and safety lock is enabled.');
+    showToast('All visible commands are contact commands and safety lock is enabled.', { kind: 'warn' });
     return;
   }
   const skipped = visible.length - runnable.length;
   runAllInProgress = true;
   cancelRunAll = false;
   setRunAllButtonState(true);
+  setCommandBusyState(true);
   try {
-    for (let i = 0; i < runnable.length; i++) {
+    setRequestStatusPill('warn', `Batch queue primed (${BATCH_FETCH_CONCURRENCY} at a time)`);
+    // Fetch results concurrently, then present them one-by-one to keep terminal output readable.
+    const prefetched = await prefetchBatchCommandLines(runnable, target);
+    for (let i = 0; i < prefetched.length; i++) {
       if (cancelRunAll) break;
-      const c = runnable[i];
+      const entry = prefetched[i];
+      if (entry?.cancelled) break;
+      const c = entry.command;
       setTargetValidation(`Running ${i + 1}/${runnable.length}: ${c.name}`);
-      // Sequential to preserve terminal readability.
-      await runCommand(c, target);
-      if (cancelRunAll) break;
-      if (batchDelayMs > 0 && i < runnable.length - 1) {
-        const continueBatch = await waitForBatchDelay(batchDelayMs);
-        if (!continueBatch) break;
-      }
+      await presentCommandLines(c, target, entry.lines || []);
     }
-    if (cancelRunAll) setTargetValidation(`Batch run stopped for @${target}.`);
-    else if (skipped > 0) setTargetValidation(`Completed ${runnable.length} commands for @${target}. Skipped ${skipped} contact commands (safety lock).`);
-    else setTargetValidation(`Completed ${runnable.length} commands for @${target}.`);
+    if (cancelRunAll) showToast(`Batch run stopped for @${target}.`, { kind: 'warn' });
+    else if (skipped > 0) showToast(`Completed ${runnable.length} commands for @${target}. Skipped ${skipped} contact commands.`, { kind: 'success' });
+    else showToast(`Completed ${runnable.length} commands for @${target}.`, { kind: 'success' });
+    setRequestStatusPill(cancelRunAll ? 'warn' : 'ok', cancelRunAll ? 'Batch stopped' : 'Live requests ready');
   } finally {
+    setCommandBusyState(false);
     runAllInProgress = false;
     cancelRunAll = false;
     setRunAllButtonState(false);
@@ -1445,6 +2271,7 @@ document.getElementById('target-input').addEventListener('keydown', (e) => {
 Object.assign(globalThis, {
   startScan,
   refreshIdentitySummary,
+  refreshAuthSession,
   checkApiHealth,
   clearRecentTargets,
   runFirstVisibleCommand,
@@ -1461,31 +2288,60 @@ Object.assign(globalThis, {
   copyCode,
 });
 
+appConfig = readStoredAppConfig();
 initNextLevelAesthetics();
 const apiInput = document.getElementById('api-url-input');
 if (apiInput) {
-  apiInput.value = readStoredApiBaseUrl();
+  apiInput.value = getInitialApiUrl();
   apiInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      syncApiInputState({ validateOnBlur: true });
       apiClient.checkApiHealth();
     }
   });
   apiInput.addEventListener('change', () => {
-    const normalized = getApiBaseUrl();
-    apiInput.value = normalized;
-    persistApiBaseUrl(normalized);
-    setLiveModePill();
-    scheduleApiHealthCheck();
-    scheduleIdentitySummaryRefresh();
+    syncApiInputState({ validateOnBlur: false });
   });
   apiInput.addEventListener('input', () => {
-    persistApiBaseUrl(getApiBaseUrl());
+    persistApiBaseUrl(apiInput.value);
     setLiveModePill();
     scheduleApiHealthCheck();
     scheduleIdentitySummaryRefresh();
   });
+  apiInput.addEventListener('blur', () => {
+    syncApiInputState({ validateOnBlur: true });
+  });
 }
+const saveDefaultApiBtn = document.getElementById('save-default-api-btn');
+if (saveDefaultApiBtn) {
+  saveDefaultApiBtn.addEventListener('click', saveDefaultApiUrl);
+}
+const applyDefaultApiBtn = document.getElementById('apply-default-api-btn');
+if (applyDefaultApiBtn) {
+  applyDefaultApiBtn.addEventListener('click', applyDefaultApiUrl);
+}
+const clearDefaultApiBtn = document.getElementById('clear-default-api-btn');
+if (clearDefaultApiBtn) {
+  clearDefaultApiBtn.addEventListener('click', clearDefaultApiUrl);
+}
+const authUsernameInput = document.getElementById('auth-username-input');
+const authPasswordInput = document.getElementById('auth-password-input');
+const authCookieInput = document.getElementById('auth-cookie-input');
+const authLoginBtn = document.getElementById('auth-login-btn');
+const authLogoutBtn = document.getElementById('auth-logout-btn');
+const authRefreshBtn = document.getElementById('auth-refresh-btn');
+if (authLoginBtn) authLoginBtn.addEventListener('click', submitAuthLogin);
+if (authLogoutBtn) authLogoutBtn.addEventListener('click', submitAuthLogout);
+if (authRefreshBtn) authRefreshBtn.addEventListener('click', refreshAuthSession);
+[authUsernameInput, authPasswordInput, authCookieInput].forEach(input => {
+  if (!input) return;
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    submitAuthLogin();
+  });
+});
 const cmdSearchInput = document.getElementById('command-search-input');
 if (cmdSearchInput) {
   cmdSearchInput.addEventListener('keydown', (e) => {
@@ -1573,6 +2429,8 @@ document.addEventListener('keydown', (e) => {
     setTargetValidation('');
   }
 });
+window.addEventListener('online', () => updateConnectivityState({ announce: true }));
+window.addEventListener('offline', () => updateConnectivityState({ announce: true }));
 initStoredState();
 liveResponseCache = readStoredLiveCache();
 persistLiveCache();
@@ -1593,13 +2451,19 @@ if (autoRetryToggle) autoRetryToggle.checked = autoRetryEnabled;
 if (allowContactToggle) allowContactToggle.checked = allowContactCommands;
 if (batchDelayInput) batchDelayInput.value = String(batchDelayMs);
 setLiveModePill();
+renderDefaultApiConfig();
 const initialApiErr = validateApiBaseUrl(getApiBaseUrl());
 setApiHealthPill('warn', initialApiErr || 'API status unknown');
+setRequestStatusPill('ok', 'Requests idle');
 renderRecentTargets();
 renderRecentCommands();
 updateRunCountPill();
 updateCacheCountPill();
 updateMediaButtons();
 renderProfileSummary();
+renderAuthSessionState();
+renderCommandCount();
 resetTerminal();
 renderCards();
+updateConnectivityState();
+scheduleAuthSessionRefresh({ immediate: true });

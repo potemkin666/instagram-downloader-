@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oceangram-backend"
+version = "0.1.0"
+description = "Backend bridge for OceanGram authenticated Instagram command execution"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "Flask==3.1.1",
+]
+
+[project.scripts]
+oceangram-backend = "oceangram_backend.app:main"
+oceangram-cli = "oceangram_backend.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["oceangram_backend*"]

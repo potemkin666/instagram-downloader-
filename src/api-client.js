@@ -19,6 +19,15 @@ function createUnsupportedInstagramSessionProvider() {
     async checkApiHealth() {
       return false;
     },
+    async loadAuthSession() {
+      return { authenticated: false, available: false, reason: 'unsupported-provider' };
+    },
+    async login() {
+      return { authenticated: false, available: false, reason: 'unsupported-provider' };
+    },
+    async logout() {
+      return { authenticated: false, available: false, reason: 'unsupported-provider' };
+    },
   };
 }
 
@@ -53,6 +62,15 @@ export function createApiClient({ backend, initialMode = API_CLIENT_MODES.BACKEN
     },
     async checkApiHealth(...args) {
       return getProvider().checkApiHealth(...args);
+    },
+    async loadAuthSession(...args) {
+      return getProvider().loadAuthSession(...args);
+    },
+    async login(...args) {
+      return getProvider().login(...args);
+    },
+    async logout(...args) {
+      return getProvider().logout(...args);
     },
   };
 }
