@@ -52,6 +52,7 @@ function renderCards() {
     grid.appendChild(empty);
   }
   updateVisibleCount(visible.length);
+  syncLiveActionAvailability();
 }
 
 function filterCards(btn) {
@@ -101,6 +102,8 @@ const MAX_RATE_LIMIT_BACKOFF_MS = 30000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
 const DEFAULT_APP_CONFIG = { defaultApiUrl: '' };
 const MISSING_API_URL_MESSAGE = 'Set backend or personal-login bridge URL first';
+const OFFLINE_MESSAGE = 'Browser is offline. Reconnect to use live backend commands.';
+const TOAST_DURATION_MS = 3200;
 // Cap cache at 50 entries to keep localStorage bounded while still retaining a useful working set of recent commands.
 const MAX_LIVE_CACHE_ITEMS = 50;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
@@ -138,6 +141,7 @@ let appConfig = { ...DEFAULT_APP_CONFIG };
 let profileSummaryState = createEmptyProfileSummaryState();
 let activeIdentityRequestId = 0;
 let identityRefreshDebounceId = null;
+let offlineMode = typeof navigator !== 'undefined' && navigator.onLine === false;
 
 function createStateStore(storage = window.localStorage) {
   const safeGet = key => {
@@ -189,6 +193,45 @@ function createStateStore(storage = window.localStorage) {
 }
 
 const stateStore = createStateStore();
+
+function getToastTitle(kind) {
+  if (kind === 'success') return 'SUCCESS';
+  if (kind === 'warn') return 'NOTICE';
+  if (kind === 'error') return 'ERROR';
+  return 'UPDATE';
+}
+
+function showToast(message, { kind = 'info', title = getToastTitle(kind), durationMs = TOAST_DURATION_MS } = {}) {
+  const region = document.getElementById('toast-region');
+  const text = String(message || '').trim();
+  if (!region || !text) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${kind}`;
+  toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  const dotClass = kind === 'success' ? 'dot-green' : kind === 'warn' ? 'dot-yellow' : kind === 'error' ? 'dot-red' : 'dot-pink';
+  toast.innerHTML = `
+    <div class="toast-title"><span class="dot ${dotClass}"></span><span>${title}</span></div>
+    <div>${text}</div>`;
+  region.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, Math.max(1200, durationMs));
+}
+
+function setConnectivityPill(status, text) {
+  const pill = document.getElementById('connectivity-pill');
+  if (!pill) return;
+  if (status === 'ok') pill.innerHTML = `<span class="dot dot-green"></span>${text}`;
+  else if (status === 'warn') pill.innerHTML = `<span class="dot dot-yellow"></span>${text}`;
+  else pill.innerHTML = `<span class="dot dot-red"></span>${text}`;
+}
+
+function canUseLiveBackend({ notify = false, message = OFFLINE_MESSAGE } = {}) {
+  if (!offlineMode) return true;
+  setRequestStatusPill('warn', 'Offline — reconnect for live commands');
+  if (notify) showToast(message, { kind: 'warn', title: 'OFFLINE' });
+  return false;
+}
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -418,7 +461,7 @@ function clearLiveCache() {
   liveResponseCache = {};
   persistJson(STORAGE_KEYS.liveCache, liveResponseCache);
   updateCacheCountPill();
-  setTargetValidation('Cleared cached live command output.');
+  showToast('Cleared cached live command output.', { kind: 'success' });
 }
 
 function trimLiveCacheEntries(cache) {
@@ -442,18 +485,65 @@ function persistLastMediaUrl(url) {
   stateStore.setString(STORAGE_KEYS.lastMediaUrl, url);
 }
 
-function updateMediaButtons() {
-  const disabled = !lastMediaUrl;
-  ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.disabled = disabled;
+function syncLiveActionAvailability() {
+  const disableLiveActions = commandInFlight || offlineMode;
+  document.querySelectorAll('.command-card').forEach(card => {
+    card.classList.toggle('command-card-disabled', disableLiveActions);
+    card.setAttribute('aria-disabled', disableLiveActions ? 'true' : 'false');
+    card.setAttribute('tabindex', disableLiveActions ? '-1' : '0');
   });
+  const diveBtn = document.getElementById('dive-btn');
+  if (diveBtn) diveBtn.disabled = disableLiveActions;
+  const retryBtn = document.getElementById('retry-btn');
+  if (retryBtn) retryBtn.disabled = disableLiveActions;
+  const apiHealthBtn = document.getElementById('api-health-btn');
+  if (apiHealthBtn) apiHealthBtn.disabled = disableLiveActions;
+  const runFirstBtn = document.getElementById('run-first-btn');
+  if (runFirstBtn) runFirstBtn.disabled = disableLiveActions;
+  const runAllBtn = document.getElementById('run-all-btn');
+  if (runAllBtn && !runAllInProgress) runAllBtn.disabled = disableLiveActions;
+  const clearCacheBtn = document.getElementById('clear-cache-btn');
+  if (clearCacheBtn) clearCacheBtn.disabled = commandInFlight;
+  const refreshIdentityBtn = document.getElementById('refresh-identity-btn');
+  if (refreshIdentityBtn) refreshIdentityBtn.disabled = disableLiveActions || profileSummaryState.status === 'loading';
+  updateMediaButtons();
+}
+
+function updateMediaButtons() {
+  const noMedia = !lastMediaUrl;
+  const openMediaBtn = document.getElementById('open-media-btn');
+  if (openMediaBtn) openMediaBtn.disabled = noMedia || offlineMode;
+  const saveMediaBtn = document.getElementById('save-media-btn');
+  if (saveMediaBtn) saveMediaBtn.disabled = noMedia || offlineMode;
+  const copyMediaBtn = document.getElementById('copy-media-btn');
+  if (copyMediaBtn) copyMediaBtn.disabled = noMedia;
 }
 
 function setLastMediaUrl(url) {
   lastMediaUrl = String(url || '').trim();
   persistLastMediaUrl(lastMediaUrl);
   updateMediaButtons();
+}
+
+function updateConnectivityState({ announce = false } = {}) {
+  const nextOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const changed = nextOffline !== offlineMode;
+  offlineMode = nextOffline;
+  setConnectivityPill(offlineMode ? 'warn' : 'ok', offlineMode ? 'Offline' : 'Online');
+  if (offlineMode) {
+    setRequestStatusPill('warn', 'Offline — reconnect for live commands');
+  } else if (!commandInFlight && !runAllInProgress) {
+    setRequestStatusPill('ok', 'Requests idle');
+  }
+  syncLiveActionAvailability();
+  if (announce || changed) {
+    showToast(
+      offlineMode
+        ? 'Live commands are temporarily disabled until the connection returns.'
+        : 'Connection restored. Live commands are available again.',
+      { kind: offlineMode ? 'warn' : 'success', title: offlineMode ? 'OFFLINE' : 'ONLINE' },
+    );
+  }
 }
 
 function extractUrlsFromText(text) {
@@ -494,6 +584,7 @@ function extractMediaUrlFromLines(lines, commandName = '') {
 
 function openLastMedia() {
   if (!lastMediaUrl) return;
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before opening remote media URLs.' })) return;
   window.open(lastMediaUrl, '_blank', 'noopener');
 }
 
@@ -521,6 +612,7 @@ function getMediaDownloadFilename(url) {
 
 async function saveLastMedia() {
   if (!lastMediaUrl) return;
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before saving remote media.' })) return;
   const filename = getMediaDownloadFilename(lastMediaUrl);
   try {
     const res = await fetchWithTimeout(lastMediaUrl, { method: 'GET' }, API_TIMEOUT_MS);
@@ -529,13 +621,13 @@ async function saveLastMedia() {
     const objectUrl = URL.createObjectURL(blob);
     try {
       triggerDownload(objectUrl, filename);
-      setTargetValidation('Saved latest media locally.');
+      showToast('Saved latest media locally.', { kind: 'success' });
     } finally {
       setTimeout(() => URL.revokeObjectURL(objectUrl), 200);
     }
   } catch (_) {
     triggerDownload(lastMediaUrl, filename);
-    setTargetValidation('Direct download fallback used for latest media.');
+    showToast('Direct download fallback used for latest media.', { kind: 'warn' });
   }
 }
 
@@ -543,9 +635,9 @@ async function copyLastMediaUrl() {
   if (!lastMediaUrl) return;
   try {
     await navigator.clipboard.writeText(lastMediaUrl);
-    setTargetValidation('Copied latest media URL to clipboard.');
+    showToast('Copied latest media URL to clipboard.', { kind: 'success' });
   } catch (_) {
-    setTargetValidation('Unable to copy media URL.');
+    showToast('Unable to copy media URL.', { kind: 'error' });
   }
 }
 
@@ -783,32 +875,36 @@ function saveDefaultApiUrl() {
   appConfig.defaultApiUrl = normalized;
   persistAppConfig();
   renderDefaultApiConfig();
-  setTargetValidation(normalized ? 'Saved default API URL.' : 'Cleared default API URL.');
+  showToast(normalized ? 'Saved default API URL.' : 'Cleared default API URL.', { kind: 'success' });
 }
 
 function applyDefaultApiUrl() {
   const apiInput = document.getElementById('api-url-input');
   const savedDefault = normalizeApiUrlValue(appConfig.defaultApiUrl);
   if (!apiInput || !savedDefault) {
-    setTargetValidation('No saved default API URL yet.');
+    showToast('No saved default API URL yet.', { kind: 'warn' });
     return;
   }
   apiInput.value = savedDefault;
   syncApiInputState({ validateOnBlur: true });
-  setTargetValidation('Loaded saved default API URL.');
+  showToast('Loaded saved default API URL.', { kind: 'success' });
 }
 
 function clearDefaultApiUrl() {
   appConfig.defaultApiUrl = '';
   persistAppConfig();
   renderDefaultApiConfig();
-  setTargetValidation('Cleared saved default API URL.');
+  showToast('Cleared saved default API URL.', { kind: 'success' });
 }
 
 function scheduleApiHealthCheck() {
   if (apiHealthDebounceId) {
     clearTimeout(apiHealthDebounceId);
     apiHealthDebounceId = null;
+  }
+  if (!canUseLiveBackend()) {
+    setApiHealthPill('warn', 'Offline');
+    return;
   }
   const base = getApiBaseUrl();
   const err = validateApiBaseUrl(base);
@@ -975,6 +1071,7 @@ function getValidatedTarget() {
 async function fetchLiveLines(target, cmd) {
   const result = await requestLiveCommandPayload(target, cmd);
   if (!result.ok) {
+    showToast(result.errorMessage, { kind: result.type === 'rate-limit' ? 'warn' : 'error', title: 'COMMAND UPDATE' });
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
@@ -983,6 +1080,8 @@ async function fetchLiveLines(target, cmd) {
         ? '  Update Backend API URL, then run the command again.'
         : result.type === 'rate-limit'
           ? '  Rate limit exceeded. An automatic retry was attempted, but the limit still persists.'
+        : result.type === 'offline'
+          ? '  Browser is offline. Reconnect before retrying this live command.'
         : result.type === 'empty'
           ? '  Backend responded, but no usable output was returned.'
           : autoRetryEnabled
@@ -1000,6 +1099,11 @@ async function fetchLiveLines(target, cmd) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
+  if (offlineMode) {
+    const err = new Error(OFFLINE_MESSAGE);
+    err.name = 'OfflineError';
+    throw err;
+  }
   if (!SUPPORTS_ABORT_CONTROLLER) {
     // Older browsers cannot cancel the underlying request, so we reject locally and ignore any late response.
     return Promise.race([
@@ -1080,6 +1184,7 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
   if (baseErr) return { ok: false, type: 'config', errorMessage: baseErr };
+  if (!canUseLiveBackend()) return { ok: false, type: 'offline', errorMessage: OFFLINE_MESSAGE };
   if (useCacheEnabled && !options.skipCache) {
     const cached = getCachedLiveLines(target, cmd);
     if (cached && cached.length) {
@@ -1130,6 +1235,8 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   }
   const msg = lastError?.name === 'AbortError'
     ? 'request timed out'
+    : lastError?.name === 'OfflineError'
+      ? 'browser is offline'
     : lastError?.status === 429
       ? 'rate limited by backend (HTTP 429)'
     : isInvalidJsonError(lastError)
@@ -1138,7 +1245,7 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   setRequestStatusPill(lastError?.status === 429 ? 'warn' : 'error', lastError?.status === 429 ? 'Rate limit still active' : `Request failed for ${cmd}`);
   return {
     ok: false,
-    type: lastError?.status === 429 ? 'rate-limit' : 'network',
+    type: lastError?.status === 429 ? 'rate-limit' : lastError?.name === 'OfflineError' ? 'offline' : 'network',
     errorMessage: `Live request failed: ${msg}`,
   };
 }
@@ -1147,6 +1254,7 @@ async function requestProfileSummaryEndpoint(target) {
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
   if (baseErr) return { ok: false, reason: baseErr };
+  if (!canUseLiveBackend()) return { ok: false, reason: OFFLINE_MESSAGE };
   let lastReason = 'No dedicated profile summary endpoint responded.';
   for (const endpoint of IDENTITY_ENDPOINTS) {
     try {
@@ -1210,6 +1318,10 @@ async function loadProfileSummary(target, options = {}) {
   const baseErr = validateApiBaseUrl(getApiBaseUrl());
   if (validationError) {
     setProfileSummaryState(createEmptyProfileSummaryState({ statusText: validationError, username: expectedTarget }));
+    return null;
+  }
+  if (!canUseLiveBackend()) {
+    setProfileSummaryState(createEmptyProfileSummaryState({ statusText: OFFLINE_MESSAGE, username: expectedTarget }));
     return null;
   }
   if (baseErr) {
@@ -1316,6 +1428,13 @@ function scheduleIdentitySummaryRefresh() {
     return;
   }
   const validationError = validateTarget(target);
+  if (!canUseLiveBackend()) {
+    setProfileSummaryState(createEmptyProfileSummaryState({
+      username: target,
+      statusText: OFFLINE_MESSAGE,
+    }));
+    return;
+  }
   const baseErr = validateApiBaseUrl(getApiBaseUrl());
   if (validationError || baseErr) {
     setProfileSummaryState(createEmptyProfileSummaryState({
@@ -1335,6 +1454,7 @@ function refreshIdentitySummary() {
     setTargetValidation('Enter a target username first.');
     return;
   }
+  if (!canUseLiveBackend({ notify: true })) return;
   apiClient.loadProfileSummary(target, { manual: true });
 }
 
@@ -1432,14 +1552,14 @@ function clearRecentTargets() {
   recentTargets = [];
   persistRecentTargets();
   renderRecentTargets();
-  setTargetValidation('Recent targets cleared.');
+  showToast('Recent targets cleared.', { kind: 'success' });
 }
 
 function clearRecentCommands() {
   recentCommands = [];
   persistRecentCommands();
   renderRecentCommands();
-  setTargetValidation('Recent commands cleared.');
+  showToast('Recent commands cleared.', { kind: 'success' });
 }
 
 function renderRecentTargets() {
@@ -1487,20 +1607,31 @@ function setRequestStatusPill(status, text) {
 }
 
 async function checkApiHealth() {
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before checking API health.' })) {
+    setApiHealthPill('warn', 'Offline');
+    return;
+  }
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
   if (baseErr) {
     setApiHealthPill('warn', baseErr);
+    showToast(baseErr, { kind: 'warn', title: 'API CHECK' });
     return;
   }
   const btn = document.getElementById('api-health-btn');
   if (btn) btn.disabled = true;
   try {
     const res = await fetchWithTimeout(`${base}/api/health`, { method: 'GET' }, API_HEALTH_CHECK_TIMEOUT_MS);
-    if (res.ok) setApiHealthPill('ok', 'API reachable');
-    else setApiHealthPill('warn', `API responded ${res.status}`);
+    if (res.ok) {
+      setApiHealthPill('ok', 'API reachable');
+      showToast('API health check succeeded.', { kind: 'success', title: 'API CHECK' });
+    } else {
+      setApiHealthPill('warn', `API responded ${res.status}`);
+      showToast(`API health check responded with HTTP ${res.status}.`, { kind: 'warn', title: 'API CHECK' });
+    }
   } catch (_) {
     setApiHealthPill('error', 'API unreachable');
+    showToast('API health check failed. The backend is unreachable.', { kind: 'error', title: 'API CHECK' });
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1524,13 +1655,17 @@ function resetTerminal() {
 
 function clearTerminal() {
   resetTerminal();
+  showToast('Terminal reset to its initial state.', { kind: 'info' });
 }
 
 function exportTerminal() {
   const body = document.getElementById('terminal-body');
   if (!body) return;
   const text = Array.from(body.children).map(el => el.textContent || '').join('\n').trim();
-  if (!text) return;
+  if (!text) {
+    showToast('Nothing to export from the terminal yet.', { kind: 'warn' });
+    return;
+  }
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1541,6 +1676,7 @@ function exportTerminal() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  showToast('Exported terminal output to a text file.', { kind: 'success' });
 }
 
 function formatTimestampForFilename() {
@@ -1549,12 +1685,12 @@ function formatTimestampForFilename() {
 
 async function retryLastCommand() {
   if (!lastRunContext) {
-    setTargetValidation('No previous command to retry yet.');
+    showToast('No previous command to retry yet.', { kind: 'warn' });
     return;
   }
   const cmd = COMMANDS.find(c => c.id === lastRunContext.commandId);
   if (!cmd) {
-    setTargetValidation('Last command is no longer available.');
+    showToast('Last command is no longer available.', { kind: 'error' });
     return;
   }
   const tInput = document.getElementById('target-input');
@@ -1563,11 +1699,12 @@ async function retryLastCommand() {
 }
 
 async function runFirstVisibleCommand() {
+  if (!canUseLiveBackend({ notify: true })) return;
   const target = getValidatedTarget();
   if (!target) return;
   const visible = getVisibleCommands();
   if (!visible.length) {
-    setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
+    showToast('No commands match the current filters. Try adjusting the category or search query.', { kind: 'warn' });
     return;
   }
   await runCommand(visible[0], target);
@@ -1583,29 +1720,7 @@ function setRunAllButtonState(running) {
 
 function setCommandBusyState(isBusy) {
   commandInFlight = isBusy;
-  document.querySelectorAll('.command-card').forEach(card => {
-    card.classList.toggle('command-card-disabled', isBusy);
-    card.setAttribute('aria-disabled', isBusy ? 'true' : 'false');
-    card.setAttribute('tabindex', isBusy ? '-1' : '0');
-  });
-  const diveBtn = document.getElementById('dive-btn');
-  if (diveBtn) diveBtn.disabled = isBusy;
-  const retryBtn = document.getElementById('retry-btn');
-  if (retryBtn) retryBtn.disabled = isBusy;
-  const apiHealthBtn = document.getElementById('api-health-btn');
-  if (apiHealthBtn) apiHealthBtn.disabled = isBusy;
-  const runFirstBtn = document.getElementById('run-first-btn');
-  if (runFirstBtn) runFirstBtn.disabled = isBusy;
-  const runAllBtn = document.getElementById('run-all-btn');
-  if (runAllBtn && !runAllInProgress) runAllBtn.disabled = isBusy;
-  const clearCacheBtn = document.getElementById('clear-cache-btn');
-  if (clearCacheBtn) clearCacheBtn.disabled = isBusy;
-  const refreshIdentityBtn = document.getElementById('refresh-identity-btn');
-  if (refreshIdentityBtn) refreshIdentityBtn.disabled = isBusy || profileSummaryState.status === 'loading';
-  ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn && !lastMediaUrl) btn.disabled = true;
-  });
+  syncLiveActionAvailability();
 }
 
 async function presentCommandLines(command, target, lines) {
@@ -1615,7 +1730,7 @@ async function presentCommandLines(command, target, lines) {
   const mediaUrl = extractMediaUrlFromLines(lines, command.name);
   if (mediaUrl) {
     setLastMediaUrl(mediaUrl);
-    setTargetValidation(`Detected media URL from ${command.name}. Use OPEN/SAVE/COPY MEDIA.`);
+    showToast(`Detected media URL from ${command.name}. Use OPEN, SAVE, or COPY MEDIA URL.`, { kind: 'info' });
   }
   registerCommandRun(command, target);
   addRecentTarget(target);
@@ -1626,13 +1741,14 @@ async function presentCommandLines(command, target, lines) {
 }
 
 async function runCommand(c, providedTarget = null) {
+  if (!canUseLiveBackend({ notify: true })) return;
   if (!tryAcquireCommandLock()) {
-    setTargetValidation('A command is already running. Please wait for it to finish.');
+    showToast('A command is already running. Please wait for it to finish.', { kind: 'warn' });
     return;
   }
   if (!allowContactCommands && isContactCommand(c)) {
     commandInFlight = false;
-    setTargetValidation('Contact commands are safety-locked. Enable "Allow contact commands" to continue.');
+    showToast('Contact commands are safety-locked. Enable "Allow contact commands" to continue.', { kind: 'warn' });
     return;
   }
   const target = providedTarget ?? getValidatedTarget();
@@ -1650,6 +1766,7 @@ async function runCommand(c, providedTarget = null) {
 }
 
 function startScan() {
+  if (!canUseLiveBackend({ notify: true })) return;
   const target = getValidatedTarget();
   if (!target) return;
   apiClient.loadProfileSummary(target);
@@ -1674,23 +1791,24 @@ function startScan() {
 async function runAllVisibleCommands() {
   if (runAllInProgress) {
     cancelRunAll = true;
-    setTargetValidation('Stopping batch run after current command...');
+    showToast('Stopping batch run after the current command...', { kind: 'warn' });
     return;
   }
+  if (!canUseLiveBackend({ notify: true })) return;
   if (commandInFlight) {
-    setTargetValidation('A command is already running. Please wait for it to finish.');
+    showToast('A command is already running. Please wait for it to finish.', { kind: 'warn' });
     return;
   }
   const target = getValidatedTarget();
   if (!target) return;
   const visible = getVisibleCommands();
   if (!visible.length) {
-    setTargetValidation('No commands match the current filters. Try adjusting the category or search query.');
+    showToast('No commands match the current filters. Try adjusting the category or search query.', { kind: 'warn' });
     return;
   }
   const runnable = allowContactCommands ? visible : visible.filter(c => !isContactCommand(c));
   if (!runnable.length) {
-    setTargetValidation('All visible commands are contact commands and safety lock is enabled.');
+    showToast('All visible commands are contact commands and safety lock is enabled.', { kind: 'warn' });
     return;
   }
   const skipped = visible.length - runnable.length;
@@ -1710,9 +1828,9 @@ async function runAllVisibleCommands() {
       setTargetValidation(`Running ${i + 1}/${runnable.length}: ${c.name}`);
       await presentCommandLines(c, target, entry.lines || []);
     }
-    if (cancelRunAll) setTargetValidation(`Batch run stopped for @${target}.`);
-    else if (skipped > 0) setTargetValidation(`Completed ${runnable.length} commands for @${target}. Skipped ${skipped} contact commands (safety lock).`);
-    else setTargetValidation(`Completed ${runnable.length} commands for @${target}.`);
+    if (cancelRunAll) showToast(`Batch run stopped for @${target}.`, { kind: 'warn' });
+    else if (skipped > 0) showToast(`Completed ${runnable.length} commands for @${target}. Skipped ${skipped} contact commands.`, { kind: 'success' });
+    else showToast(`Completed ${runnable.length} commands for @${target}.`, { kind: 'success' });
     setRequestStatusPill(cancelRunAll ? 'warn' : 'ok', cancelRunAll ? 'Batch stopped' : 'Live requests ready');
   } finally {
     setCommandBusyState(false);
@@ -1875,6 +1993,8 @@ document.addEventListener('keydown', (e) => {
     setTargetValidation('');
   }
 });
+window.addEventListener('online', () => updateConnectivityState({ announce: true }));
+window.addEventListener('offline', () => updateConnectivityState({ announce: true }));
 initStoredState();
 liveResponseCache = readStoredLiveCache();
 persistLiveCache();
@@ -1907,3 +2027,4 @@ updateMediaButtons();
 renderProfileSummary();
 resetTerminal();
 renderCards();
+updateConnectivityState();

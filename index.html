@@ -478,6 +478,45 @@
       margin-left: auto;
       margin-right: auto;
     }
+    .toast-stack {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: min(360px, calc(100vw - 24px));
+      z-index: 9500;
+      pointer-events: none;
+    }
+    .toast {
+      border: 2px solid rgba(0,245,212,0.24);
+      background: rgba(5, 8, 30, 0.94);
+      color: var(--pearl);
+      padding: 12px 14px;
+      box-shadow: 8px 8px 0 rgba(0,0,0,0.35), 0 0 26px rgba(0,245,212,0.08);
+      font-size: 0.82rem;
+      line-height: 1.5;
+      pointer-events: auto;
+      animation: toastSlideIn 180ms ease-out forwards;
+    }
+    .toast-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--pixel-font);
+      font-size: 0.46rem;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .toast-info { border-color: rgba(0,180,216,0.34); }
+    .toast-success { border-color: rgba(40,200,64,0.4); }
+    .toast-warn { border-color: rgba(255,215,0,0.45); }
+    .toast-error { border-color: rgba(255,95,87,0.48); }
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     .profile-summary {
       margin: 18px auto 0;
       max-width: 760px;
@@ -1119,6 +1158,12 @@
       .terminal-body { max-height:320px; }
       .logo { font-size:1rem; }
       .commands-toolbar { flex-direction: column; align-items: stretch; }
+      .toast-stack {
+        left: 12px;
+        right: 12px;
+        top: 12px;
+        width: auto;
+      }
       .command-search { max-width: none; min-width: 0; }
       .profile-summary-body { grid-template-columns: 1fr; }
       .profile-avatar-shell { margin: 0 auto; }
@@ -1141,6 +1186,8 @@
   </style>
 </head>
 <body>
+
+<div id="toast-region" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
 
 <!-- ── Bioluminescent cave canvas ── -->
 <canvas id="bg-canvas" aria-hidden="true"></canvas>
@@ -1252,6 +1299,7 @@
       <div class="stats-bar">
         <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
         <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Backend URL required</div>
+        <div class="stat-pill" id="connectivity-pill"><span class="dot dot-green"></span>Online</div>
         <div class="stat-pill" id="run-count-pill"><span class="dot dot-green"></span>0 command runs</div>
         <div class="stat-pill"><span class="dot dot-pink"></span>Public profiles only</div>
       </div>
