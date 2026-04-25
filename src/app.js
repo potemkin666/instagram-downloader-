@@ -91,7 +91,7 @@ const MAX_INSTAGRAM_USERNAME_LENGTH = 30;
 const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
-const RUN_ALL_FETCH_CONCURRENCY = 3;
+const BATCH_FETCH_CONCURRENCY = 3;
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5000;
 const MAX_RATE_LIMIT_BACKOFF_MS = 30000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
@@ -728,7 +728,10 @@ async function waitForBatchDelay(delayMs) {
 }
 
 function createConcurrencyLimiter(limit) {
-  const maxConcurrent = Math.max(1, Number(limit) || 1);
+  const parsedLimit = Number(limit);
+  const maxConcurrent = Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.floor(parsedLimit))
+    : 1;
   let activeCount = 0;
   const queue = [];
 
@@ -751,13 +754,33 @@ function createConcurrencyLimiter(limit) {
   });
 }
 
-async function prefetchBatchCommandLines(commands, target) {
-  const limit = createConcurrencyLimiter(RUN_ALL_FETCH_CONCURRENCY);
-  return Promise.all(commands.map((command, index) => (async () => {
-    if (index > 0 && batchDelayMs > 0) {
-      const shouldContinue = await waitForBatchDelay(index * batchDelayMs);
-      if (!shouldContinue) return { command, cancelled: true };
+function createBatchStartScheduler(delayMs) {
+  const waitMs = Math.max(0, Number(delayMs) || 0);
+  let previousStart = Promise.resolve();
+  let first = true;
+  return async () => {
+    const prior = previousStart;
+    let release;
+    previousStart = new Promise(resolve => {
+      release = resolve;
+    });
+    await prior;
+    try {
+      if (!first && waitMs > 0) return waitForBatchDelay(waitMs);
+      return !cancelRunAll;
+    } finally {
+      first = false;
+      release();
     }
+  };
+}
+
+async function prefetchBatchCommandLines(commands, target) {
+  const limit = createConcurrencyLimiter(BATCH_FETCH_CONCURRENCY);
+  const waitForBatchStart = createBatchStartScheduler(batchDelayMs);
+  return Promise.all(commands.map((command, index) => (async () => {
+    const shouldContinue = await waitForBatchStart();
+    if (!shouldContinue) return { command, cancelled: true };
     if (cancelRunAll) return { command, cancelled: true };
     const lines = await limit(async () => {
       setRequestStatusPill('warn', `Fetching ${command.name} (${index + 1}/${commands.length})...`);
@@ -904,6 +927,7 @@ function getRateLimitBackoffMs(response) {
   if (Number.isFinite(retryAt) && retryAt > Date.now()) {
     return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, retryAt - Date.now()));
   }
+  // Past or invalid date values fall back to the default cooldown window.
   return DEFAULT_RATE_LIMIT_BACKOFF_MS;
 }
 
@@ -937,21 +961,19 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   url.searchParams.set('target', target);
   url.searchParams.set('command', cmd);
   const maxAttempts = autoRetryEnabled ? LIVE_FETCH_TOTAL_ATTEMPTS : 1;
-  let attempt = 0;
+  let attempt = 1;
   let lastError = null;
-  let rateLimitRetriesRemaining = 1;
-  while (attempt < maxAttempts) {
-    attempt += 1;
+  let rateLimitRetryUsed = false;
+  while (attempt <= maxAttempts) {
     try {
       setRequestStatusPill('warn', `Requesting ${cmd}...`);
       const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
       if (response.status === 429) {
         lastError = createHttpStatusError(response);
-        if (rateLimitRetriesRemaining > 0) {
-          rateLimitRetriesRemaining -= 1;
+        if (!rateLimitRetryUsed) {
+          rateLimitRetryUsed = true;
           const resumed = await handleRateLimitBackoff(response, cmd);
           if (!resumed) return { ok: false, type: 'rate-limit', errorMessage: 'Rate-limit backoff was interrupted' };
-          if (attempt >= maxAttempts) attempt -= 1;
           continue;
         }
         throw lastError;
@@ -968,7 +990,8 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
       return { ok: true, lines: payload, source: 'live', attempt, data };
     } catch (err) {
       lastError = err;
-      if (attempt < maxAttempts) continue;
+      if (err?.status === 429 || attempt >= maxAttempts) break;
+      attempt += 1;
     }
   }
   const msg = lastError?.name === 'AbortError'
@@ -1542,7 +1565,7 @@ async function runAllVisibleCommands() {
   setRunAllButtonState(true);
   setCommandBusyState(true);
   try {
-    setRequestStatusPill('warn', `Batch queue primed (${RUN_ALL_FETCH_CONCURRENCY} at a time)`);
+    setRequestStatusPill('warn', `Batch queue primed (${BATCH_FETCH_CONCURRENCY} at a time)`);
     const prefetched = await prefetchBatchCommandLines(runnable, target);
     for (let i = 0; i < prefetched.length; i++) {
       if (cancelRunAll) break;
