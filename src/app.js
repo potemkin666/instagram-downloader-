@@ -99,7 +99,7 @@ const INSTAGRAM_USERNAME_REGEX = new RegExp(String.raw`^(?!.*\.\.)(?!\.)(?!.*\.$
 const NUMERIC_ID_SEQUENCE_REGEX = new RegExp(String.raw`\b\d{${MIN_INSTAGRAM_ID_DIGITS},}\b`);
 const EXPLICIT_USERNAME_REGEX = new RegExp(String.raw`\b(?:username|user name|target|account|profile)\b\s*[:=#-]\s*@?([A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}})\b`, 'i');
 const EXPLICIT_INSTAGRAM_ID_REGEX = new RegExp(String.raw`\b(?:instagram\s*id|profile\s*id|user\s*id|account\s*id|pk|id)\b\s*[:=#-]\s*(\d{${MIN_INSTAGRAM_ID_DIGITS},})\b`, 'i');
-const MEDIA_HOST_SUFFIXES = ['instagram.com', 'cdninstagram.com'];
+const MEDIA_HOST_SUFFIXES = ['instagram.com', 'cdninstagram.com', 'fbcdn.net'];
 const MAX_RECENT_COMMANDS = 8;
 const MAX_RECENT_TARGETS = 8;
 const INITIAL_TERMINAL_LINES = [
