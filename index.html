@@ -1462,6 +1462,7 @@ const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
+// Keep the cache small enough for localStorage while still preserving recent command reuse.
 const MAX_LIVE_CACHE_ITEMS = 50;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
 const INSTAGRAM_USERNAME_REGEX = new RegExp(String.raw`^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}}$`);
@@ -1716,9 +1717,10 @@ function clearLiveCache() {
 }
 
 function trimLiveCacheEntries(cache) {
-  const next = cache && typeof cache === 'object' ? { ...cache } : {};
-  const entries = Object.entries(next);
-  if (entries.length <= MAX_LIVE_CACHE_ITEMS) return next;
+  const source = cache && typeof cache === 'object' ? cache : {};
+  const entries = Object.entries(source);
+  if (entries.length <= MAX_LIVE_CACHE_ITEMS) return source;
+  const next = { ...source };
   entries.sort((a, b) => (a[1]?.ts || 0) - (b[1]?.ts || 0));
   const trim = entries.length - MAX_LIVE_CACHE_ITEMS;
   for (let i = 0; i < trim; i++) {
@@ -1828,7 +1830,7 @@ async function saveLastMedia() {
       triggerDownload(objectUrl, filename);
       setTargetValidation('Saved latest media locally.');
     } finally {
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 200);
     }
   } catch (_) {
     triggerDownload(lastMediaUrl, filename);
@@ -2159,7 +2161,16 @@ async function fetchLiveLines(target, cmd) {
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   if (!SUPPORTS_ABORT_CONTROLLER) {
-    return fetch(url, options);
+    return Promise.race([
+      fetch(url, options),
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          const err = new Error('Timed out');
+          err.name = 'AbortError';
+          reject(err);
+        }, timeoutMs);
+      }),
+    ]);
   }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -2178,7 +2189,8 @@ async function parseJsonResponseStrict(response) {
   try {
     return await response.json();
   } catch (_) {
-    throw new Error('Invalid JSON response');
+    const contentType = response?.headers?.get('content-type') || 'unknown content-type';
+    throw new Error(`Invalid JSON response (${contentType})`);
   }
 }
 
@@ -2217,8 +2229,8 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   }
   const msg = lastError?.name === 'AbortError'
     ? 'request timed out'
-    : lastError?.message === 'Invalid JSON response'
-      ? 'invalid JSON response'
+    : /^Invalid JSON response/.test(lastError?.message || '')
+      ? lastError.message
       : 'connection error';
   return { ok: false, type: 'network', errorMessage: `Live request failed: ${msg}` };
 }
@@ -2244,7 +2256,7 @@ async function requestProfileSummaryEndpoint(target) {
       }
       lastReason = 'Profile summary endpoint returned no usable identity data.';
     } catch (err) {
-      lastReason = err?.message === 'Invalid JSON response'
+      lastReason = /^Invalid JSON response/.test(err?.message || '')
         ? 'Profile summary endpoint returned invalid JSON.'
         : 'No dedicated profile summary endpoint responded.';
     }
