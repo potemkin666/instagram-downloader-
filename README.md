@@ -40,7 +40,7 @@ Because this repository currently contains only the frontend, the Python packagi
 3. Build the browser bundle.
 
 ```bash
-cd /home/runner/work/instagram-downloader-/instagram-downloader-
+cd instagram-downloader-
 npm install
 npm run build
 ```
@@ -48,7 +48,7 @@ npm run build
 The production bundle is written to:
 
 ```bash
-/home/runner/work/instagram-downloader-/instagram-downloader-/assets/app.bundle.js
+assets/app.bundle.js
 ```
 
 ## Local usage
@@ -66,14 +66,14 @@ Typical flow:
 ## Development
 
 ```bash
-cd /home/runner/work/instagram-downloader-/instagram-downloader-
+cd instagram-downloader-
 npm run dev
 ```
 
 For the current project, `npm test` runs the existing build validation:
 
 ```bash
-cd /home/runner/work/instagram-downloader-/instagram-downloader-
+cd instagram-downloader-
 npm test
 ```
 
@@ -153,14 +153,14 @@ If no dedicated identity endpoint returns usable data, the UI falls back to live
 
 ## Source layout
 
-- `/home/runner/work/instagram-downloader-/instagram-downloader-/src/app.js` — main UI logic, persistence, notifications, connectivity handling
-- `/home/runner/work/instagram-downloader-/instagram-downloader-/src/api-client.js` — backend client wiring
-- `/home/runner/work/instagram-downloader-/instagram-downloader-/src/commands.js` — command catalog
-- `/home/runner/work/instagram-downloader-/instagram-downloader-/src/effects.js` — visual effects and copy helper
+- `src/app.js` — main UI logic, persistence, notifications, connectivity handling
+- `src/api-client.js` — backend client wiring
+- `src/commands.js` — command catalog
+- `src/effects.js` — visual effects and copy helper
 
 ## License
 
-This project is licensed under the MIT License. See `/home/runner/work/instagram-downloader-/instagram-downloader-/LICENSE`.
+This project is licensed under the MIT License. See `LICENSE`.
 
 ## Disclaimer
 

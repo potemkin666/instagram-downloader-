@@ -209,9 +209,16 @@ function showToast(message, { kind = 'info', title = getToastTitle(kind), durati
   toast.className = `toast toast-${kind}`;
   toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
   const dotClass = kind === 'success' ? 'dot-green' : kind === 'warn' ? 'dot-yellow' : kind === 'error' ? 'dot-red' : 'dot-pink';
-  toast.innerHTML = `
-    <div class="toast-title"><span class="dot ${dotClass}"></span><span>${title}</span></div>
-    <div>${text}</div>`;
+  const heading = document.createElement('div');
+  heading.className = 'toast-title';
+  const dot = document.createElement('span');
+  dot.className = `dot ${dotClass}`;
+  const titleText = document.createElement('span');
+  titleText.textContent = String(title || getToastTitle(kind));
+  heading.append(dot, titleText);
+  const body = document.createElement('div');
+  body.textContent = text;
+  toast.append(heading, body);
   region.appendChild(toast);
   window.setTimeout(() => {
     toast.remove();
