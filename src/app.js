@@ -1089,41 +1089,42 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   url.searchParams.set('target', target);
   url.searchParams.set('command', cmd);
   const maxAttempts = autoRetryEnabled ? LIVE_FETCH_TOTAL_ATTEMPTS : 1;
-  const maxTotalAttempts = maxAttempts + 1;
-  let attempt = 1;
-  let totalAttempts = 0;
   let lastError = null;
   let rateLimitRetryUsed = false;
-  while (attempt <= maxAttempts && totalAttempts < maxTotalAttempts) {
-    totalAttempts += 1;
-    try {
-      setRequestStatusPill('warn', `Requesting ${cmd}...`);
-      const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
-      if (response.status === 429) {
-        lastError = createHttpStatusError(response);
-        if (!rateLimitRetryUsed) {
-          rateLimitRetryUsed = true;
-          const resumed = await handleRateLimitBackoff(response, cmd);
-          if (!resumed) return { ok: false, type: 'rate-limit', errorMessage: 'Rate-limit backoff was interrupted' };
-          continue;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let retryAfterRateLimit = false;
+    do {
+      retryAfterRateLimit = false;
+      try {
+        setRequestStatusPill('warn', `Requesting ${cmd}...`);
+        const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
+        if (response.status === 429) {
+          lastError = createHttpStatusError(response);
+          if (!rateLimitRetryUsed) {
+            rateLimitRetryUsed = true;
+            const resumed = await handleRateLimitBackoff(response, cmd);
+            if (!resumed) return { ok: false, type: 'rate-limit', errorMessage: 'Rate-limit backoff was interrupted' };
+            retryAfterRateLimit = true;
+            continue;
+          }
+          throw lastError;
         }
-        throw lastError;
+        if (!response.ok) throw createHttpStatusError(response);
+        const data = await parseJsonResponseStrict(response);
+        const payload = parseLiveOutputLines(data);
+        if (!hasMeaningfulOutput(payload)) {
+          setRequestStatusPill('warn', `Backend returned no usable output for ${cmd}`);
+          return { ok: false, type: 'empty', errorMessage: 'Live backend returned no output', data };
+        }
+        if (useCacheEnabled) setCachedLiveLines(target, cmd, payload);
+        setRequestStatusPill('ok', `Latest live request: ${cmd}`);
+        return { ok: true, lines: payload, source: 'live', attempt, data };
+      } catch (err) {
+        lastError = err;
+        if (err?.status === 429 || attempt >= maxAttempts) break;
       }
-      if (!response.ok) throw createHttpStatusError(response);
-      const data = await parseJsonResponseStrict(response);
-      const payload = parseLiveOutputLines(data);
-      if (!hasMeaningfulOutput(payload)) {
-        setRequestStatusPill('warn', `Backend returned no usable output for ${cmd}`);
-        return { ok: false, type: 'empty', errorMessage: 'Live backend returned no output', data };
-      }
-      if (useCacheEnabled) setCachedLiveLines(target, cmd, payload);
-      setRequestStatusPill('ok', `Latest live request: ${cmd}`);
-      return { ok: true, lines: payload, source: 'live', attempt, data };
-    } catch (err) {
-      lastError = err;
-      if (err?.status === 429 || attempt >= maxAttempts) break;
-      attempt += 1;
-    }
+    } while (retryAfterRateLimit);
+    if (lastError?.status === 429) break;
   }
   const msg = lastError?.name === 'AbortError'
     ? 'request timed out'
@@ -1697,6 +1698,7 @@ async function runAllVisibleCommands() {
   setCommandBusyState(true);
   try {
     setRequestStatusPill('warn', `Batch queue primed (${BATCH_FETCH_CONCURRENCY} at a time)`);
+    // Fetch results concurrently, then present them one-by-one to keep terminal output readable.
     const prefetched = await prefetchBatchCommandLines(runnable, target);
     for (let i = 0; i < prefetched.length; i++) {
       if (cancelRunAll) break;
