@@ -18,7 +18,7 @@ https://<your-username>.github.io/instagram-downloader-/
 - **20 OSINT command cards** — organised by category (Profile, Social, Content, Engagement, Contact)
 - **Interactive terminal panel** — click any card to see backend command output with typewriter animation (backend URL required)
 - **Optional live mode** — set a backend API URL in the UI to fetch real command results
-- **Command search + visible-runner** — search command cards and run all currently visible commands with a concurrency-limited batch queue
+- **Command search + visible-runner** — search command cards and run all currently visible commands with a concurrency-limited batch queue (3 at a time)
 - **Input validation + recent history** — validate Instagram usernames and quickly rerun recent command/target pairs
 - **Persistent recent command history** — recent command chips survive page reloads
 - **One-click history cleanup** — clear recent targets and recent commands independently

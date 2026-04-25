@@ -94,7 +94,7 @@ const MAX_INSTAGRAM_USERNAME_LENGTH = 30;
 const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
-// Maximum number of command results to fetch in parallel during batch runs.
+// Keep batch concurrency at 3 to improve throughput without overwhelming rate-limited backends.
 const BATCH_FETCH_CONCURRENCY = 3;
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5000;
 const MAX_RATE_LIMIT_BACKOFF_MS = 30000;
