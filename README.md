@@ -30,6 +30,7 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Safer backend URL handling** — validates backend URL format/protocol and automatically re-checks API health after edits
 - **Quick-run first match** — run the first currently visible command instantly via `RUN FIRST` or `Enter` in command search
 - **Media URL actions (incl. profile pics)** — auto-detects latest media URL from live output with one-click `OPEN`, `SAVE`, and `COPY MEDIA URL`
+- **Minimum identity summary** — when a username and backend URL are supplied, OceanGram now attempts to verify the Instagram ID and profile image even before individual commands are explored
 - **Live response cache** — reuses cached command output per target+command for faster repeat lookups
 - **Cache management controls** — view cache entry count in the UI and clear cached live output instantly
 - **Auto retry for flaky requests** — optional one-time retry on failed live backend calls
@@ -43,7 +44,8 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Filterable command grid** — filter by category tabs
 - **Quick-start code block** — copy the Osintgram install commands in one click
 - **Fully responsive** — works on mobile and desktop
-- **Zero dependencies** — pure HTML/CSS/JS, no frameworks required
+- **Bundled production script** — modular source files are bundled into a single minified browser asset with esbuild
+- **Zero runtime dependencies** — the shipped UI still runs as static HTML/CSS/JS in the browser
 
 ## 🧰 OSINT Commands Showcased
 
@@ -85,9 +87,41 @@ Supported response formats:
 - `{ "output": "line 1\nline 2\nline 3" }`
 - `{ "output": ["line 1", "line 2"] }`
 
+Optional dedicated identity endpoints supported by the UI:
+
+- `GET <backend-base-url>/api/profile-summary?target=<username>`
+- `GET <backend-base-url>/api/profile?target=<username>`
+- `GET <backend-base-url>/api/identity?target=<username>`
+
+If one of those endpoints is available, OceanGram uses it first for the minimum identity summary. Otherwise it falls back to the existing `info` + `propic` command calls and only shows the profile image after the URL successfully loads in the browser.
+
 If no backend URL is set, the terminal shows `[!] No backend API URL configured`.
 If the backend request fails, the terminal shows `[!] Live request failed: ...`.
 No fallback output is used in either case.
+
+## 🧱 Source layout
+
+OceanGram now keeps the browser logic under `src/`:
+
+- `src/app.js` — UI rendering, stateful interactions, and bootstrapping
+- `src/commands.js` — command catalog metadata
+- `src/api-client.js` — provider-oriented API client wiring for the current backend mode and future authenticated/local providers
+- `src/effects.js` — copy helper plus visual/background effects
+
+The current shipped build still uses the existing backend provider. The API client module is structured so a future local authenticated Instagram-session provider can be added without returning to a single inline script.
+
+## 🛠️ Build the bundled asset
+
+```bash
+npm install
+npm run build
+```
+
+This writes the production bundle to:
+
+```bash
+assets/app.bundle.js
+```
 
 ## ⚠️ Disclaimer
 

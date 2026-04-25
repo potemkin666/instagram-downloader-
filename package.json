@@ -1,0 +1,18 @@
+{
+  "name": "oceangram-ui",
+  "version": "1.0.0",
+  "description": "An ocean-themed GitHub Pages UI for Instagram OSINT reconnaissance, inspired by [Osintgram](https://github.com/Datalux/Osintgram).",
+  "main": "assets/app.bundle.js",
+  "scripts": {
+    "test": "npm run build",
+    "build": "esbuild src/app.js --bundle --minify --outfile=assets/app.bundle.js",
+    "dev": "esbuild src/app.js --bundle --sourcemap --outfile=assets/app.bundle.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  },
+  "private": true
+}
