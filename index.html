@@ -1160,7 +1160,7 @@
         <div class="profile-summary-status" id="profile-summary-status">Enter a username and backend URL to fetch a verified Instagram ID and profile image.</div>
         <div class="profile-summary-body">
           <div class="profile-avatar-shell" id="profile-avatar-shell">
-            <img id="profile-avatar-img" alt="Instagram profile preview"/>
+            <img id="profile-avatar-img" alt="Profile image placeholder"/>
             <div class="profile-avatar-fallback" id="profile-avatar-fallback">NO VERIFIED<br/>IMAGE YET</div>
           </div>
           <div class="profile-meta-grid">
@@ -1897,7 +1897,7 @@ function normalizeInstagramId(value) {
   return match ? match[0] : '';
 }
 
-function firstNonEmptyValue(values) {
+function firstValidValue(values) {
   for (const value of values) {
     if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -1916,7 +1916,7 @@ function getNestedValue(source, path) {
 }
 
 function pickNestedValue(source, paths) {
-  return firstNonEmptyValue((paths || []).map(path => getNestedValue(source, path)));
+  return firstValidValue((paths || []).map(path => getNestedValue(source, path)));
 }
 
 function isValidHttpUrl(raw) {
@@ -1930,14 +1930,14 @@ function isValidHttpUrl(raw) {
 
 function extractIdentityFromStructuredPayload(data) {
   if (!data || typeof data !== 'object') return null;
-  const username = firstNonEmptyValue([
+  const username = firstValidValue([
     pickNestedValue(data, ['username', 'user.username', 'profile.username', 'account.username', 'data.username']),
   ]).replace(/^@/, '');
-  const instagramId = normalizeInstagramId(firstNonEmptyValue([
+  const instagramId = normalizeInstagramId(firstValidValue([
     pickNestedValue(data, ['instagram_id', 'instagramId', 'user.instagram_id', 'profile.instagram_id', 'account.instagram_id', 'data.instagram_id']),
     pickNestedValue(data, ['user.id', 'user.pk', 'profile.id', 'profile.pk', 'account.id', 'account.pk', 'data.id', 'data.pk', 'id', 'pk']),
   ]));
-  const profileImageUrl = firstNonEmptyValue([
+  const profileImageUrl = firstValidValue([
     pickNestedValue(data, ['profile_image_url', 'profile_image', 'profile_pic_url_hd', 'profile_pic_url', 'avatar_url', 'image_url', 'user.profile_pic_url_hd', 'user.profile_pic_url', 'profile.profile_pic_url_hd', 'profile.profile_pic_url', 'account.profile_pic_url_hd', 'account.profile_pic_url', 'data.profile_pic_url_hd', 'data.profile_pic_url']),
   ]);
   return {
@@ -2140,14 +2140,16 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
       return { ok: true, lines: cached, source: 'cache', attempt: 0, data: { output: cached.map(([, text]) => text) } };
     }
   }
-  const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
+  const url = new URL('/api/command', base);
+  url.searchParams.set('target', target);
+  url.searchParams.set('command', cmd);
   const maxAttempts = autoRetryEnabled ? LIVE_FETCH_TOTAL_ATTEMPTS : 1;
   let attempt = 0;
   let lastError = null;
   while (attempt < maxAttempts) {
     attempt += 1;
     try {
-      const res = await fetchJsonWithTimeout(url, API_TIMEOUT_MS);
+      const res = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
       const data = await res.json();
       const payload = parseLiveOutputLines(data);
@@ -3136,17 +3138,31 @@ function initNextLevelAesthetics() {
     document.querySelectorAll(selector).forEach(node => attachTilt(node, 8));
   });
 
-  const observer = new MutationObserver(() => {
-    document.querySelectorAll('.command-card:not([data-tilt-ready])').forEach(card => {
+  function primeCommandCardTilt(root = document) {
+    root.querySelectorAll('.command-card:not([data-tilt-ready])').forEach(card => {
       card.dataset.tiltReady = 'true';
       attachTilt(card, 12);
     });
+  }
+
+  const commandGrid = document.getElementById('commands-grid');
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach(mutation => {
+      mutation.addedNodes.forEach(node => {
+        if (!(node instanceof HTMLElement)) return;
+        if (node.matches && node.matches('.command-card')) {
+          if (!node.dataset.tiltReady) {
+            node.dataset.tiltReady = 'true';
+            attachTilt(node, 12);
+          }
+          return;
+        }
+        primeCommandCardTilt(node);
+      });
+    });
   });
-  observer.observe(document.body, { childList: true, subtree: true });
-  document.querySelectorAll('.command-card').forEach(card => {
-    card.dataset.tiltReady = 'true';
-    attachTilt(card, 12);
-  });
+  if (commandGrid) observer.observe(commandGrid, { childList: true });
+  primeCommandCardTilt();
 }
 
 /* ═══════════════════════════════════════════════════════════
