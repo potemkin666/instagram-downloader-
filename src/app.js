@@ -485,7 +485,7 @@ async function copyLastMediaUrl() {
 function createEmptyProfileSummaryState(overrides = {}) {
   return {
     status: 'idle',
-    statusText: 'Enter a username and backend URL to fetch a verified Instagram ID and profile image.',
+    statusText: 'Enter a username and backend or personal-login bridge URL to fetch a verified Instagram ID and profile image.',
     username: '',
     instagramId: '',
     profileImageUrl: '',
@@ -672,12 +672,12 @@ function preloadImage(url) {
 }
 
 function validateApiBaseUrl(base) {
-  if (!base) return 'Set backend URL first';
+  if (!base) return 'Set backend or personal-login bridge URL first';
   try {
     const parsed = new URL(base);
-    if (!['http:', 'https:'].includes(parsed.protocol)) return 'Use http:// or https:// backend URL';
+    if (!['http:', 'https:'].includes(parsed.protocol)) return 'Use http:// or https:// for the backend/bridge URL';
   } catch (_) {
-    return 'Invalid backend URL format';
+    return 'Invalid backend or bridge URL format';
   }
   return '';
 }
