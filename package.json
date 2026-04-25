@@ -1,5 +1,5 @@
 {
-  "name": "instagram-downloader-",
+  "name": "oceangram-ui",
   "version": "1.0.0",
   "description": "An ocean-themed GitHub Pages UI for Instagram OSINT reconnaissance, inspired by [Osintgram](https://github.com/Datalux/Osintgram).",
   "main": "assets/app.bundle.js",

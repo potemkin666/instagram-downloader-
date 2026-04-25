@@ -75,6 +75,7 @@ const LIVE_CACHE_STORAGE_KEY = 'oceangramLiveOutputCache';
 const FUNCTIONAL_SETTINGS_STORAGE_KEY = 'oceangramFunctionalSettings';
 const LAST_MEDIA_URL_STORAGE_KEY = 'oceangramLastMediaUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
+// Keep a fallback path for older browsers that lack AbortController-based request cancellation.
 const SUPPORTS_ABORT_CONTROLLER = 'AbortController' in window;
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
@@ -98,6 +99,7 @@ const INSTAGRAM_USERNAME_REGEX = new RegExp(String.raw`^(?!.*\.\.)(?!\.)(?!.*\.$
 const NUMERIC_ID_SEQUENCE_REGEX = new RegExp(String.raw`\b\d{${MIN_INSTAGRAM_ID_DIGITS},}\b`);
 const EXPLICIT_USERNAME_REGEX = new RegExp(String.raw`\b(?:username|user name|target|account|profile)\b\s*[:=#-]\s*@?([A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}})\b`, 'i');
 const EXPLICIT_INSTAGRAM_ID_REGEX = new RegExp(String.raw`\b(?:instagram\s*id|profile\s*id|user\s*id|account\s*id|pk|id)\b\s*[:=#-]\s*(\d{${MIN_INSTAGRAM_ID_DIGITS},})\b`, 'i');
+const MEDIA_HOST_SUFFIXES = ['instagram.com', 'cdninstagram.com'];
 const MAX_RECENT_COMMANDS = 8;
 const MAX_RECENT_TARGETS = 8;
 const INITIAL_TERMINAL_LINES = [
@@ -397,7 +399,7 @@ function looksLikeMediaUrl(url) {
   if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/.test(u)) return true;
   try {
     const host = new URL(raw).hostname.toLowerCase();
-    if (host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'cdninstagram.com' || host.endsWith('.cdninstagram.com')) return true;
+    if (MEDIA_HOST_SUFFIXES.some(suffix => host === suffix || host.endsWith(`.${suffix}`))) return true;
   } catch (_) {}
   return false;
 }
