@@ -1327,10 +1327,10 @@ const MAX_BATCH_DELAY_MS = 5000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
 const MAX_LIVE_CACHE_ITEMS = 120;
 // 1-30 chars; letters/numbers/dot/underscore; no leading/trailing/consecutive dots.
-const INSTAGRAM_USERNAME_REGEX = new RegExp(`^(?!.*\\.\\.)(?!\\.)(?!.*\\.$)[A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}}$`);
-const INSTAGRAM_ID_REGEX = new RegExp(`\\b\\d{${MIN_INSTAGRAM_ID_DIGITS},}\\b`);
-const EXPLICIT_USERNAME_REGEX = new RegExp(`\\b(?:username|user name|target|account|profile)\\b\\s*[:=#-]\\s*@?([A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}})\\b`, 'i');
-const EXPLICIT_INSTAGRAM_ID_REGEX = new RegExp(`\\b(?:instagram\\s*id|profile\\s*id|user\\s*id|account\\s*id|pk|id)\\b\\s*[:=#-]\\s*(\\d{${MIN_INSTAGRAM_ID_DIGITS},})\\b`, 'i');
+const INSTAGRAM_USERNAME_REGEX = new RegExp(String.raw`^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}}$`);
+const NUMERIC_ID_SEQUENCE_REGEX = new RegExp(String.raw`\b\d{${MIN_INSTAGRAM_ID_DIGITS},}\b`);
+const EXPLICIT_USERNAME_REGEX = new RegExp(String.raw`\b(?:username|user name|target|account|profile)\b\s*[:=#-]\s*@?([A-Za-z0-9._]{1,${MAX_INSTAGRAM_USERNAME_LENGTH}})\b`, 'i');
+const EXPLICIT_INSTAGRAM_ID_REGEX = new RegExp(String.raw`\b(?:instagram\s*id|profile\s*id|user\s*id|account\s*id|pk|id)\b\s*[:=#-]\s*(\d{${MIN_INSTAGRAM_ID_DIGITS},})\b`, 'i');
 const MAX_RECENT_COMMANDS = 8;
 const MAX_RECENT_TARGETS = 8;
 const INITIAL_TERMINAL_LINES = [
@@ -1757,7 +1757,7 @@ function normalizeInstagramId(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return String(Math.trunc(value));
   const text = String(value || '').trim();
   if (!text) return '';
-  const match = text.match(INSTAGRAM_ID_REGEX);
+  const match = text.match(NUMERIC_ID_SEQUENCE_REGEX);
   return match ? match[0] : '';
 }
 
@@ -1798,7 +1798,8 @@ function extractIdentityFromStructuredPayload(data) {
     pickNestedValue(data, ['username', 'user.username', 'profile.username', 'account.username', 'data.username']),
   ]).replace(/^@/, '');
   const instagramId = normalizeInstagramId(firstNonEmptyValue([
-    pickNestedValue(data, ['instagram_id', 'instagramId', 'id', 'pk', 'user.id', 'user.pk', 'user.instagram_id', 'profile.id', 'profile.pk', 'account.id', 'account.pk', 'data.id', 'data.pk']),
+    pickNestedValue(data, ['instagram_id', 'instagramId', 'user.instagram_id', 'profile.instagram_id', 'account.instagram_id', 'data.instagram_id']),
+    pickNestedValue(data, ['user.id', 'user.pk', 'profile.id', 'profile.pk', 'account.id', 'account.pk', 'data.id', 'data.pk', 'id', 'pk']),
   ]));
   const profileImageUrl = firstNonEmptyValue([
     pickNestedValue(data, ['profile_image_url', 'profile_image', 'profile_pic_url_hd', 'profile_pic_url', 'avatar_url', 'image_url', 'user.profile_pic_url_hd', 'user.profile_pic_url', 'profile.profile_pic_url_hd', 'profile.profile_pic_url', 'account.profile_pic_url_hd', 'account.profile_pic_url', 'data.profile_pic_url_hd', 'data.profile_pic_url']),
@@ -1857,7 +1858,6 @@ function preloadImage(url) {
     const img = new Image();
     img.onload = () => resolve(true);
     img.onerror = () => resolve(false);
-    img.referrerPolicy = 'no-referrer';
     img.src = url;
   });
 }
@@ -2126,10 +2126,12 @@ async function loadProfileSummary(target, options = {}) {
     )
     : null;
   const endpointIdentity = endpointResult.ok ? endpointResult.candidate : null;
+  const mergedForIdentity = mergeIdentityCandidates(endpointIdentity, infoIdentity, propicIdentity);
+  const mergedForImage = mergeIdentityCandidates(endpointIdentity, propicIdentity, infoIdentity);
   const mergedIdentity = {
-    username: mergeIdentityCandidates(endpointIdentity, infoIdentity, propicIdentity).username,
-    instagramId: mergeIdentityCandidates(endpointIdentity, infoIdentity, propicIdentity).instagramId,
-    profileImageUrl: mergeIdentityCandidates(endpointIdentity, propicIdentity, infoIdentity).profileImageUrl,
+    username: mergedForIdentity.username,
+    instagramId: mergedForIdentity.instagramId,
+    profileImageUrl: mergedForImage.profileImageUrl,
   };
   const targetMatched = usernamesMatch(expectedTarget, mergedIdentity.username);
   const imageUrlValid = isValidHttpUrl(mergedIdentity.profileImageUrl);
