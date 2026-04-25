@@ -939,7 +939,8 @@ function getRateLimitBackoffMs(response) {
 
 async function handleRateLimitBackoff(response, cmd) {
   const waitMs = getRateLimitBackoffMs(response);
-  const label = cmd ? ` for ${cmd}` : '';
+  const safeCmd = String(cmd || '').trim();
+  const label = safeCmd ? ` for ${safeCmd}` : '';
   const continued = await waitForDelay(waitMs, {
     onTick: (_, remainingSeconds) => {
       if (remainingSeconds > 0) {
@@ -948,7 +949,7 @@ async function handleRateLimitBackoff(response, cmd) {
     },
   });
   if (!continued) return false;
-  setRequestStatusPill('warn', `Retrying ${cmd} after rate limit...`);
+  setRequestStatusPill('warn', `Retrying ${safeCmd || 'request'} after rate limit...`);
   return true;
 }
 
