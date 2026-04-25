@@ -279,6 +279,8 @@ function readStoredAppConfig() {
   const saved = readStoredJson(STORAGE_KEYS.appConfig, {});
   if (!saved || typeof saved !== 'object') return { ...DEFAULT_APP_CONFIG };
   return {
+    ...DEFAULT_APP_CONFIG,
+    ...saved,
     defaultApiUrl: normalizeApiUrlValue(saved.defaultApiUrl),
   };
 }
