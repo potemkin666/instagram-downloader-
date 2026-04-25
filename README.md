@@ -101,7 +101,7 @@ No fallback output is used in either case.
 
 ## 🧱 Source layout
 
-OceanGram now keeps the browser logic under `/home/runner/work/instagram-downloader-/instagram-downloader-/src`:
+OceanGram now keeps the browser logic under `src/`:
 
 - `src/app.js` — UI rendering, stateful interactions, and bootstrapping
 - `src/commands.js` — command catalog metadata

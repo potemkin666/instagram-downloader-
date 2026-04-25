@@ -75,7 +75,7 @@ const LIVE_CACHE_STORAGE_KEY = 'oceangramLiveOutputCache';
 const FUNCTIONAL_SETTINGS_STORAGE_KEY = 'oceangramFunctionalSettings';
 const LAST_MEDIA_URL_STORAGE_KEY = 'oceangramLastMediaUrl';
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success']);
-const SUPPORTS_ABORT_CONTROLLER = typeof window !== 'undefined' && 'AbortController' in window;
+const SUPPORTS_ABORT_CONTROLLER = 'AbortController' in window;
 const API_TIMEOUT_MS = 15000;
 const API_HEALTH_CHECK_TIMEOUT_MS = 8000;
 const API_HEALTH_DEBOUNCE_MS = 700;
@@ -397,7 +397,7 @@ function looksLikeMediaUrl(url) {
   if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/.test(u)) return true;
   try {
     const host = new URL(raw).hostname.toLowerCase();
-    if (host.includes('instagram.com') || host.includes('cdninstagram.com')) return true;
+    if (host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'cdninstagram.com' || host.endsWith('.cdninstagram.com')) return true;
   } catch (_) {}
   return false;
 }
