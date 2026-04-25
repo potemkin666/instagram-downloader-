@@ -716,7 +716,7 @@ async function waitForDelay(delayMs, { allowCancel = false, onTick } = {}) {
       lastReportedSecond = remainingSeconds;
       onTick(remainingMs, remainingSeconds);
     }
-    const step = Math.min(100, Math.max(20, end - Date.now()));
+    const step = Math.min(100, Math.max(20, remainingMs));
     await new Promise(resolve => setTimeout(resolve, step));
   }
   if (onTick) onTick(0, 0);
@@ -737,8 +737,13 @@ function createConcurrencyLimiter(limit) {
 
   const runNext = () => {
     if (activeCount >= maxConcurrent || !queue.length) return;
-    activeCount += 1;
     const next = queue.shift();
+    if (typeof next.shouldStart === 'function' && !next.shouldStart()) {
+      next.resolve(null);
+      runNext();
+      return;
+    }
+    activeCount += 1;
     Promise.resolve()
       .then(next.task)
       .then(next.resolve, next.reject)
@@ -748,8 +753,8 @@ function createConcurrencyLimiter(limit) {
       });
   };
 
-  return task => new Promise((resolve, reject) => {
-    queue.push({ task, resolve, reject });
+  return (task, shouldStart) => new Promise((resolve, reject) => {
+    queue.push({ task, shouldStart, resolve, reject });
     runNext();
   });
 }
@@ -766,8 +771,7 @@ function createBatchStartScheduler(delayMs) {
     });
     await prior;
     try {
-      if (!first && waitMs > 0) return waitForBatchDelay(waitMs);
-      return !cancelRunAll;
+      return waitForDelay(first ? 0 : waitMs, { allowCancel: true });
     } finally {
       first = false;
       release();
@@ -785,8 +789,10 @@ async function prefetchBatchCommandLines(commands, target) {
     const lines = await limit(async () => {
       setRequestStatusPill('warn', `Fetching ${command.name} (${index + 1}/${commands.length})...`);
       return apiClient.fetchLiveLines(target, command.name);
-    });
-    return lines ? { command, lines } : { command, cancelled: true };
+    }, () => !cancelRunAll);
+    return lines !== null && typeof lines !== 'undefined'
+      ? { command, lines }
+      : { command, cancelled: true };
   })()));
 }
 
@@ -923,7 +929,7 @@ function getRateLimitBackoffMs(response) {
   if (Number.isFinite(numericSeconds) && numericSeconds >= 0) {
     return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, Math.round(numericSeconds * 1000)));
   }
-  const retryAt = Date.parse(raw);
+  const retryAt = raw && !Number.isFinite(numericSeconds) ? Date.parse(raw) : Number.NaN;
   if (Number.isFinite(retryAt) && retryAt > Date.now()) {
     return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, retryAt - Date.now()));
   }
@@ -961,10 +967,13 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   url.searchParams.set('target', target);
   url.searchParams.set('command', cmd);
   const maxAttempts = autoRetryEnabled ? LIVE_FETCH_TOTAL_ATTEMPTS : 1;
+  const maxTotalAttempts = maxAttempts + 1;
   let attempt = 1;
+  let totalAttempts = 0;
   let lastError = null;
   let rateLimitRetryUsed = false;
-  while (attempt <= maxAttempts) {
+  while (attempt <= maxAttempts && totalAttempts < maxTotalAttempts) {
+    totalAttempts += 1;
     try {
       setRequestStatusPill('warn', `Requesting ${cmd}...`);
       const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
