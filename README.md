@@ -18,7 +18,7 @@ https://<your-username>.github.io/instagram-downloader-/
 - **20 OSINT command cards** — organised by category (Profile, Social, Content, Engagement, Contact)
 - **Interactive terminal panel** — click any card to see backend command output with typewriter animation (backend URL required)
 - **Optional live mode** — set a backend API URL in the UI to fetch real command results
-- **Command search + visible-runner** — search command cards and run all currently visible commands in sequence
+- **Command search + visible-runner** — search command cards and run all currently visible commands with a concurrency-limited batch queue
 - **Input validation + recent history** — validate Instagram usernames and quickly rerun recent command/target pairs
 - **Persistent recent command history** — recent command chips survive page reloads
 - **One-click history cleanup** — clear recent targets and recent commands independently
@@ -35,6 +35,8 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Cache management controls** — view cache entry count in the UI and clear cached live output instantly
 - **Auto retry for flaky requests** — optional one-time retry on failed live backend calls
 - **Batch delay control** — configure milliseconds between commands during `RUN VISIBLE` batches
+- **429-aware backoff status** — surface rate-limit retries in the UI and automatically pause before retrying once
+- **Personal-login bridge callout** — clearly shows where to paste your own personal-account-powered API URL
 - **Contact command safety lock** — blocks `Contact` commands unless explicitly enabled by the operator
 - **Favorites + favorites tab** — star frequently used commands and filter to favorites only
 - **Sortable command grid** — order commands by default, name, category, or most-used
@@ -72,8 +74,10 @@ python3 main.py <target_username>
 To run commands against a real backend from the UI:
 
 1. Start your backend service (for example, a wrapper around Osintgram).
-2. In OceanGram, paste the backend base URL into the **Backend API URL** field.
+2. In OceanGram, paste the backend base URL into the **Backend / personal-login bridge API URL** field.
 3. Click any command card.
+
+That API can be a tiny local bridge powered by your own normal personal Instagram login/session; OceanGram does not require a business or creator account-specific flow in the UI.
 
 OceanGram calls:
 
@@ -95,8 +99,11 @@ Optional dedicated identity endpoints supported by the UI:
 
 If one of those endpoints is available, OceanGram uses it first for the minimum identity summary. Otherwise it falls back to the existing `info` + `propic` command calls and only shows the profile image after the URL successfully loads in the browser.
 
+When `RUN VISIBLE` is used, OceanGram now fetches commands in a small concurrency-limited queue (3 at a time) while still honoring the configured batch delay between request starts.
+
 If no backend URL is set, the terminal shows `[!] No backend API URL configured`.
 If the backend request fails, the terminal shows `[!] Live request failed: ...`.
+If the backend responds with HTTP 429, OceanGram shows a rate-limit status pill, waits for the reported retry window (or 5 seconds by default), and retries once automatically.
 No fallback output is used in either case.
 
 ## 🧱 Source layout

@@ -91,6 +91,9 @@ const MAX_INSTAGRAM_USERNAME_LENGTH = 30;
 const IDENTITY_REFRESH_DEBOUNCE_MS = 500;
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
+const RUN_ALL_FETCH_CONCURRENCY = 3;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5000;
+const MAX_RATE_LIMIT_BACKOFF_MS = 30000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
 // Cap cache at 50 entries to keep localStorage bounded while still retaining a useful working set of recent commands.
 const MAX_LIVE_CACHE_ITEMS = 50;
@@ -702,14 +705,67 @@ function tryAcquireCommandLock() {
   return true;
 }
 
-async function waitForBatchDelay(delayMs) {
+async function waitForDelay(delayMs, { allowCancel = false, onTick } = {}) {
   const end = Date.now() + delayMs;
+  let lastReportedSecond = null;
   while (Date.now() < end) {
-    if (cancelRunAll) return false;
+    if (allowCancel && cancelRunAll) return false;
+    const remainingMs = Math.max(0, end - Date.now());
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    if (onTick && remainingSeconds !== lastReportedSecond) {
+      lastReportedSecond = remainingSeconds;
+      onTick(remainingMs, remainingSeconds);
+    }
     const step = Math.min(100, Math.max(20, end - Date.now()));
     await new Promise(resolve => setTimeout(resolve, step));
   }
-  return !cancelRunAll;
+  if (onTick) onTick(0, 0);
+  return !(allowCancel && cancelRunAll);
+}
+
+async function waitForBatchDelay(delayMs) {
+  return waitForDelay(delayMs, { allowCancel: true });
+}
+
+function createConcurrencyLimiter(limit) {
+  const maxConcurrent = Math.max(1, Number(limit) || 1);
+  let activeCount = 0;
+  const queue = [];
+
+  const runNext = () => {
+    if (activeCount >= maxConcurrent || !queue.length) return;
+    activeCount += 1;
+    const next = queue.shift();
+    Promise.resolve()
+      .then(next.task)
+      .then(next.resolve, next.reject)
+      .finally(() => {
+        activeCount -= 1;
+        runNext();
+      });
+  };
+
+  return task => new Promise((resolve, reject) => {
+    queue.push({ task, resolve, reject });
+    runNext();
+  });
+}
+
+async function prefetchBatchCommandLines(commands, target) {
+  const limit = createConcurrencyLimiter(RUN_ALL_FETCH_CONCURRENCY);
+  return Promise.all(commands.map((command, index) => (async () => {
+    if (index > 0 && batchDelayMs > 0) {
+      const shouldContinue = await waitForBatchDelay(index * batchDelayMs);
+      if (!shouldContinue) return { command, cancelled: true };
+    }
+    if (cancelRunAll) return { command, cancelled: true };
+    const lines = await limit(async () => {
+      if (cancelRunAll) return null;
+      setRequestStatusPill('warn', `Fetching ${command.name} (${index + 1}/${commands.length})...`);
+      return apiClient.fetchLiveLines(target, command.name);
+    });
+    return lines ? { command, lines } : { command, cancelled: true };
+  })()));
 }
 
 function isEditableElement(target) {
@@ -774,6 +830,8 @@ async function fetchLiveLines(target, cmd) {
       ['warn', `[!] ${result.errorMessage}`],
       ['info', result.type === 'config'
         ? '  Update Backend API URL, then run the command again.'
+        : result.type === 'rate-limit'
+          ? '  Backend asked us to slow down. OceanGram already backed off once before giving up.'
         : result.type === 'empty'
           ? '  Backend responded, but no usable output was returned.'
           : autoRetryEnabled
@@ -830,6 +888,41 @@ function isInvalidJsonError(err) {
   return /^Invalid JSON response/.test(err?.message || '');
 }
 
+function createHttpStatusError(response) {
+  const message = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+  const err = new Error(message);
+  err.status = response.status;
+  return err;
+}
+
+function getRateLimitBackoffMs(response) {
+  const raw = response?.headers?.get('retry-after') || '';
+  const numericSeconds = Number(raw);
+  if (Number.isFinite(numericSeconds) && numericSeconds >= 0) {
+    return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, Math.round(numericSeconds * 1000)));
+  }
+  const retryAt = Date.parse(raw);
+  if (Number.isFinite(retryAt)) {
+    return Math.max(1000, Math.min(MAX_RATE_LIMIT_BACKOFF_MS, retryAt - Date.now()));
+  }
+  return DEFAULT_RATE_LIMIT_BACKOFF_MS;
+}
+
+async function handleRateLimitBackoff(response, cmd) {
+  const waitMs = getRateLimitBackoffMs(response);
+  const label = cmd ? ` for ${cmd}` : '';
+  const continued = await waitForDelay(waitMs, {
+    onTick: (_, remainingSeconds) => {
+      if (remainingSeconds > 0) {
+        setRequestStatusPill('warn', `Rate limited${label}, retrying in ${remainingSeconds}s`);
+      }
+    },
+  });
+  if (!continued) return false;
+  setRequestStatusPill('warn', `Retrying ${cmd} after rate limit...`);
+  return true;
+}
+
 async function requestLiveCommandPayload(target, cmd, options = {}) {
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
@@ -837,6 +930,7 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   if (useCacheEnabled && !options.skipCache) {
     const cached = getCachedLiveLines(target, cmd);
     if (cached && cached.length) {
+      setRequestStatusPill('ok', `Using cached response for ${cmd}`);
       return { ok: true, lines: cached, source: 'cache', attempt: 0, data: { output: cached.map(([, text]) => text) } };
     }
   }
@@ -846,17 +940,32 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   const maxAttempts = autoRetryEnabled ? LIVE_FETCH_TOTAL_ATTEMPTS : 1;
   let attempt = 0;
   let lastError = null;
+  let rateLimitRetriesRemaining = 1;
   while (attempt < maxAttempts) {
     attempt += 1;
     try {
+      setRequestStatusPill('warn', `Requesting ${cmd}...`);
       const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      if (response.status === 429) {
+        lastError = createHttpStatusError(response);
+        if (rateLimitRetriesRemaining > 0) {
+          rateLimitRetriesRemaining -= 1;
+          const resumed = await handleRateLimitBackoff(response, cmd);
+          if (!resumed) return { ok: false, type: 'rate-limit', errorMessage: 'Rate-limit backoff was interrupted' };
+          if (attempt >= maxAttempts) attempt -= 1;
+          continue;
+        }
+        throw lastError;
+      }
+      if (!response.ok) throw createHttpStatusError(response);
       const data = await parseJsonResponseStrict(response);
       const payload = parseLiveOutputLines(data);
       if (!hasMeaningfulOutput(payload)) {
+        setRequestStatusPill('warn', `Backend returned no usable output for ${cmd}`);
         return { ok: false, type: 'empty', errorMessage: 'Live backend returned no output', data };
       }
       if (useCacheEnabled) setCachedLiveLines(target, cmd, payload);
+      setRequestStatusPill('ok', `Latest live request: ${cmd}`);
       return { ok: true, lines: payload, source: 'live', attempt, data };
     } catch (err) {
       lastError = err;
@@ -865,10 +974,17 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
   }
   const msg = lastError?.name === 'AbortError'
     ? 'request timed out'
+    : lastError?.status === 429
+      ? 'rate limited by backend (HTTP 429)'
     : isInvalidJsonError(lastError)
       ? lastError.message
       : 'connection error';
-  return { ok: false, type: 'network', errorMessage: `Live request failed: ${msg}` };
+  setRequestStatusPill(lastError?.status === 429 ? 'warn' : 'error', lastError?.status === 429 ? 'Rate limit still active' : `Request failed for ${cmd}`);
+  return {
+    ok: false,
+    type: lastError?.status === 429 ? 'rate-limit' : 'network',
+    errorMessage: `Live request failed: ${msg}`,
+  };
 }
 
 async function requestProfileSummaryEndpoint(target) {
@@ -1206,6 +1322,14 @@ function setApiHealthPill(status, text) {
   else pill.innerHTML = `<span class="dot dot-red"></span>${text}`;
 }
 
+function setRequestStatusPill(status, text) {
+  const pill = document.getElementById('request-status-pill');
+  if (!pill) return;
+  if (status === 'ok') pill.innerHTML = `<span class="dot dot-green"></span>${text}`;
+  else if (status === 'warn') pill.innerHTML = `<span class="dot dot-yellow"></span>${text}`;
+  else pill.innerHTML = `<span class="dot dot-red"></span>${text}`;
+}
+
 async function checkApiHealth() {
   const base = getApiBaseUrl();
   const baseErr = validateApiBaseUrl(base);
@@ -1328,6 +1452,23 @@ function setCommandBusyState(isBusy) {
   });
 }
 
+async function presentCommandLines(command, target, lines) {
+  document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
+  const el = document.querySelector(`.command-card[data-id="${command.id}"]`);
+  if (el) el.classList.add('active-card');
+  const mediaUrl = extractMediaUrlFromLines(lines, command.name);
+  if (mediaUrl) {
+    setLastMediaUrl(mediaUrl);
+    setTargetValidation(`Detected media URL from ${command.name}. Use OPEN/SAVE/COPY MEDIA.`);
+  }
+  registerCommandRun(command, target);
+  addRecentTarget(target);
+  addRecentCommand(command.id, target);
+  await animateOutput(lines);
+  renderCards();
+  document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
 async function runCommand(c, providedTarget = null) {
   if (!tryAcquireCommandLock()) {
     setTargetValidation('A command is already running. Please wait for it to finish.');
@@ -1345,21 +1486,8 @@ async function runCommand(c, providedTarget = null) {
   }
   setCommandBusyState(true);
   try {
-    document.querySelectorAll('.command-card').forEach(el => el.classList.remove('active-card'));
-    const el = document.querySelector(`.command-card[data-id="${c.id}"]`);
-    if (el) el.classList.add('active-card');
     const lines = await apiClient.fetchLiveLines(target, c.name);
-    const mediaUrl = extractMediaUrlFromLines(lines, c.name);
-    if (mediaUrl) {
-      setLastMediaUrl(mediaUrl);
-      setTargetValidation(`Detected media URL from ${c.name}. Use OPEN/SAVE/COPY MEDIA.`);
-    }
-    registerCommandRun(c, target);
-    addRecentTarget(target);
-    addRecentCommand(c.id, target);
-    await animateOutput(lines);
-    renderCards();
-    document.querySelector('.terminal-wrap').scrollIntoView({ behavior:'smooth', block:'nearest' });
+    await presentCommandLines(c, target, lines);
   } finally {
     setCommandBusyState(false);
   }
@@ -1393,6 +1521,10 @@ async function runAllVisibleCommands() {
     setTargetValidation('Stopping batch run after current command...');
     return;
   }
+  if (commandInFlight) {
+    setTargetValidation('A command is already running. Please wait for it to finish.');
+    return;
+  }
   const target = getValidatedTarget();
   if (!target) return;
   const visible = getVisibleCommands();
@@ -1409,23 +1541,24 @@ async function runAllVisibleCommands() {
   runAllInProgress = true;
   cancelRunAll = false;
   setRunAllButtonState(true);
+  setCommandBusyState(true);
   try {
-    for (let i = 0; i < runnable.length; i++) {
+    setRequestStatusPill('warn', `Batch queue primed (${RUN_ALL_FETCH_CONCURRENCY} at a time)`);
+    const prefetched = await prefetchBatchCommandLines(runnable, target);
+    for (let i = 0; i < prefetched.length; i++) {
       if (cancelRunAll) break;
-      const c = runnable[i];
+      const entry = prefetched[i];
+      if (entry?.cancelled) break;
+      const c = entry.command;
       setTargetValidation(`Running ${i + 1}/${runnable.length}: ${c.name}`);
-      // Sequential to preserve terminal readability.
-      await runCommand(c, target);
-      if (cancelRunAll) break;
-      if (batchDelayMs > 0 && i < runnable.length - 1) {
-        const continueBatch = await waitForBatchDelay(batchDelayMs);
-        if (!continueBatch) break;
-      }
+      await presentCommandLines(c, target, entry.lines || []);
     }
     if (cancelRunAll) setTargetValidation(`Batch run stopped for @${target}.`);
     else if (skipped > 0) setTargetValidation(`Completed ${runnable.length} commands for @${target}. Skipped ${skipped} contact commands (safety lock).`);
     else setTargetValidation(`Completed ${runnable.length} commands for @${target}.`);
+    setRequestStatusPill(cancelRunAll ? 'warn' : 'ok', cancelRunAll ? 'Batch stopped' : 'Live requests ready');
   } finally {
+    setCommandBusyState(false);
     runAllInProgress = false;
     cancelRunAll = false;
     setRunAllButtonState(false);
@@ -1595,6 +1728,7 @@ if (batchDelayInput) batchDelayInput.value = String(batchDelayMs);
 setLiveModePill();
 const initialApiErr = validateApiBaseUrl(getApiBaseUrl());
 setApiHealthPill('warn', initialApiErr || 'API status unknown');
+setRequestStatusPill('ok', 'Requests idle');
 renderRecentTargets();
 renderRecentCommands();
 updateRunCountPill();

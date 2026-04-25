@@ -405,6 +405,39 @@
       margin-bottom: 26px;
       line-height: 1.6;
     }
+    .field-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--foam);
+      font-family: var(--pixel-font);
+      font-size: 0.55rem;
+      letter-spacing: 1px;
+    }
+    .field-note {
+      margin-top: 8px;
+      color: var(--mist);
+      line-height: 1.55;
+      font-size: 0.8rem;
+    }
+    .api-entry-panel {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border: 1px solid rgba(0,245,212,0.2);
+      background: rgba(9,14,44,0.72);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+    }
+    .api-entry-kicker {
+      color: var(--glow);
+      font-family: var(--pixel-font);
+      font-size: 0.56rem;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .api-entry-copy {
+      color: var(--foam);
+      line-height: 1.65;
+      font-size: 0.86rem;
+    }
     .search-row {
       display: flex;
       gap: 12px;
@@ -1139,7 +1172,7 @@
   <section aria-label="Target search">
     <div class="search-card">
       <p class="search-title">≫ BEGIN RECONNAISSANCE ≪</p>
-      <p class="search-desc">Enter a public Instagram username, then click a command card to dive deep.</p>
+      <p class="search-desc">Enter a public Instagram username, then click a command card to dive deep. If you have your own tiny personal-account-powered bridge API, paste it below and OceanGram will use that too.</p>
       <div class="search-row">
         <input id="target-input" class="search-input" type="text"
                placeholder="@username" autocomplete="off" spellcheck="false"
@@ -1184,15 +1217,22 @@
         </div>
         <div class="profile-checks" id="profile-checks"></div>
       </div>
+      <div class="api-entry-panel">
+        <div class="api-entry-kicker">🫧 PERSONAL LOGIN API SPOT</div>
+        <div class="api-entry-copy">Paste the URL of your own local or hosted bridge API here. That bridge can use your normal personal Instagram login/session behind the scenes — no business or creator account required.</div>
+      </div>
       <div class="mt-16">
+        <label class="field-label" for="api-url-input">BACKEND / PERSONAL-LOGIN BRIDGE API URL</label>
         <input id="api-url-input" class="search-input" type="url"
-               placeholder="https://your-osint-backend.example.com (required)"
+               placeholder="https://your-personal-login-bridge.example.com (required)"
                autocomplete="off" spellcheck="false"
                aria-label="Backend API URL for live mode"/>
+        <div class="field-note">This is the exact place to plug in your own personal-account API endpoint.</div>
       </div>
       <div class="commands-toolbar mt-16">
         <button class="btn-mini" id="api-health-btn" onclick="checkApiHealth()">CHECK API HEALTH</button>
         <div class="stat-pill" id="api-health-pill"><span class="dot dot-yellow"></span>API status unknown</div>
+        <div class="stat-pill" id="request-status-pill"><span class="dot dot-green"></span>Requests idle</div>
       </div>
       <div class="stats-bar">
         <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
