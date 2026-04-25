@@ -1160,7 +1160,7 @@
         <div class="profile-summary-status" id="profile-summary-status">Enter a username and backend URL to fetch a verified Instagram ID and profile image.</div>
         <div class="profile-summary-body">
           <div class="profile-avatar-shell" id="profile-avatar-shell">
-            <img id="profile-avatar-img" alt="Profile image placeholder"/>
+            <img id="profile-avatar-img" alt=""/>
             <div class="profile-avatar-fallback" id="profile-avatar-fallback">NO VERIFIED<br/>IMAGE YET</div>
           </div>
           <div class="profile-meta-grid">
@@ -3100,6 +3100,9 @@ function initNextLevelAesthetics() {
   if (!body) return;
   const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const tiltTargets = ['.search-card', '.profile-summary', '.terminal-wrap', '.recent-wrap'];
+  const PANEL_TILT_INTENSITY = 8;
+  const COMMAND_CARD_TILT_INTENSITY = 12;
+  const PANEL_PERSPECTIVE_PX = 1200;
 
   if (!prefersReducedMotion) {
     window.addEventListener('pointermove', (event) => {
@@ -3113,7 +3116,7 @@ function initNextLevelAesthetics() {
     });
   }
 
-  function attachTilt(node, intensity = 12) {
+  function attachTilt(node, intensity = COMMAND_CARD_TILT_INTENSITY) {
     if (!node || prefersReducedMotion) return;
     node.addEventListener('pointermove', (event) => {
       const rect = node.getBoundingClientRect();
@@ -3124,7 +3127,7 @@ function initNextLevelAesthetics() {
       node.style.setProperty('--tilt-x', `${tiltX}deg`);
       node.style.setProperty('--tilt-y', `${tiltY}deg`);
       if (!node.classList.contains('command-card')) {
-        node.style.transform = `perspective(1200px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translate3d(0,-4px,0)`;
+        node.style.transform = `perspective(${PANEL_PERSPECTIVE_PX}px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translate3d(0,-4px,0)`;
       }
     });
     node.addEventListener('pointerleave', () => {
@@ -3135,13 +3138,13 @@ function initNextLevelAesthetics() {
   }
 
   tiltTargets.forEach(selector => {
-    document.querySelectorAll(selector).forEach(node => attachTilt(node, 8));
+    document.querySelectorAll(selector).forEach(node => attachTilt(node, PANEL_TILT_INTENSITY));
   });
 
   function primeCommandCardTilt(root = document) {
     root.querySelectorAll('.command-card:not([data-tilt-ready])').forEach(card => {
       card.dataset.tiltReady = 'true';
-      attachTilt(card, 12);
+      attachTilt(card, COMMAND_CARD_TILT_INTENSITY);
     });
   }
 
@@ -3153,7 +3156,7 @@ function initNextLevelAesthetics() {
         if (node.matches && node.matches('.command-card')) {
           if (!node.dataset.tiltReady) {
             node.dataset.tiltReady = 'true';
-            attachTilt(node, 12);
+            attachTilt(node, COMMAND_CARD_TILT_INTENSITY);
           }
           return;
         }
