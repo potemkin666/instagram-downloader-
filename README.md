@@ -30,6 +30,7 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Safer backend URL handling** — validates backend URL format/protocol and automatically re-checks API health after edits
 - **Quick-run first match** — run the first currently visible command instantly via `RUN FIRST` or `Enter` in command search
 - **Media URL actions (incl. profile pics)** — auto-detects latest media URL from live output with one-click `OPEN`, `SAVE`, and `COPY MEDIA URL`
+- **Minimum identity summary** — when a username and backend URL are supplied, OceanGram now attempts to verify the Instagram ID and profile image even before individual commands are explored
 - **Live response cache** — reuses cached command output per target+command for faster repeat lookups
 - **Cache management controls** — view cache entry count in the UI and clear cached live output instantly
 - **Auto retry for flaky requests** — optional one-time retry on failed live backend calls
@@ -84,6 +85,14 @@ Supported response formats:
 - `{ "lines": [["prompt","..."], ["result","..."], ["success","..."]] }`
 - `{ "output": "line 1\nline 2\nline 3" }`
 - `{ "output": ["line 1", "line 2"] }`
+
+Optional dedicated identity endpoints supported by the UI:
+
+- `GET <backend-base-url>/api/profile-summary?target=<username>`
+- `GET <backend-base-url>/api/profile?target=<username>`
+- `GET <backend-base-url>/api/identity?target=<username>`
+
+If one of those endpoints is available, OceanGram uses it first for the minimum identity summary. Otherwise it falls back to the existing `info` + `propic` command calls and only shows the profile image after the URL successfully loads in the browser.
 
 If no backend URL is set, the terminal shows `[!] No backend API URL configured`.
 If the backend request fails, the terminal shows `[!] Live request failed: ...`.

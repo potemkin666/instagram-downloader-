@@ -341,6 +341,124 @@
       margin-left: auto;
       margin-right: auto;
     }
+    .profile-summary {
+      margin: 18px auto 0;
+      max-width: 760px;
+      border: 2px solid rgba(0,245,212,0.18);
+      background: rgba(2,5,16,0.78);
+      padding: 18px;
+      text-align: left;
+      box-shadow: inset 0 0 28px rgba(0,245,212,0.03);
+    }
+    .profile-summary-header,
+    .profile-summary-meta,
+    .profile-checks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .profile-summary-title {
+      font-family: var(--pixel-font);
+      font-size: 0.5rem;
+      color: var(--teal);
+      letter-spacing: 1px;
+    }
+    .profile-summary-status {
+      margin-top: 10px;
+      color: var(--foam);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+    .profile-summary-body {
+      display: grid;
+      grid-template-columns: 116px minmax(0, 1fr);
+      gap: 16px;
+      margin-top: 14px;
+      align-items: start;
+    }
+    .profile-avatar-shell {
+      width: 116px;
+      height: 116px;
+      border: 2px solid rgba(0,245,212,0.2);
+      background: rgba(0,245,212,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: 4px 4px 0 rgba(0,245,212,0.08);
+    }
+    .profile-avatar-shell img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+    .profile-avatar-shell.has-image img { display: block; }
+    .profile-avatar-fallback {
+      font-family: var(--pixel-font);
+      font-size: 0.5rem;
+      color: rgba(0,245,212,0.55);
+      text-align: center;
+      line-height: 1.8;
+      padding: 8px;
+    }
+    .profile-avatar-shell.has-image .profile-avatar-fallback { display: none; }
+    .profile-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .profile-meta-card {
+      border: 1px solid rgba(0,245,212,0.14);
+      background: rgba(12,8,40,0.62);
+      padding: 10px 12px;
+      min-width: 0;
+    }
+    .profile-meta-label {
+      font-family: var(--pixel-font);
+      font-size: 0.42rem;
+      color: var(--mist);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .profile-meta-value {
+      color: var(--pearl);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .profile-meta-value.muted {
+      color: rgba(168,216,240,0.7);
+    }
+    .profile-checks {
+      margin-top: 14px;
+      justify-content: flex-start;
+      align-items: stretch;
+    }
+    .profile-check {
+      border: 1px solid rgba(0,245,212,0.16);
+      background: rgba(10,8,40,0.62);
+      padding: 8px 10px;
+      min-width: 180px;
+      flex: 1 1 180px;
+    }
+    .profile-check.ok { border-color: rgba(0,245,212,0.28); }
+    .profile-check.fail { border-color: rgba(255,95,87,0.35); }
+    .profile-check-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--pearl);
+      font-size: 0.82rem;
+    }
+    .profile-check-detail {
+      margin-top: 6px;
+      color: var(--mist);
+      font-size: 0.72rem;
+      line-height: 1.45;
+    }
 
     /* Pixel-art style button */
     .btn-dive {
@@ -843,6 +961,8 @@
       .logo { font-size:1rem; }
       .commands-toolbar { flex-direction: column; align-items: stretch; }
       .command-search { max-width: none; min-width: 0; }
+      .profile-summary-body { grid-template-columns: 1fr; }
+      .profile-avatar-shell { margin: 0 auto; }
     }
   </style>
 </head>
@@ -896,6 +1016,38 @@
         </div>
       </div>
       <div id="target-validation" class="validation-msg" aria-live="polite"></div>
+      <div class="profile-summary" id="profile-summary" aria-live="polite">
+        <div class="profile-summary-header">
+          <div class="profile-summary-title">MINIMUM IDENTITY CHECK</div>
+          <button class="btn-clear-mini" id="refresh-identity-btn" type="button" onclick="refreshIdentitySummary()">REFRESH</button>
+        </div>
+        <div class="profile-summary-status" id="profile-summary-status">Enter a username and backend URL to fetch a verified Instagram ID and profile image.</div>
+        <div class="profile-summary-body">
+          <div class="profile-avatar-shell" id="profile-avatar-shell">
+            <img id="profile-avatar-img" alt="Instagram profile preview"/>
+            <div class="profile-avatar-fallback" id="profile-avatar-fallback">NO VERIFIED<br/>IMAGE YET</div>
+          </div>
+          <div class="profile-meta-grid">
+            <div class="profile-meta-card">
+              <div class="profile-meta-label">USERNAME</div>
+              <div class="profile-meta-value muted" id="profile-username-value">Awaiting lookup</div>
+            </div>
+            <div class="profile-meta-card">
+              <div class="profile-meta-label">INSTAGRAM ID</div>
+              <div class="profile-meta-value muted" id="profile-id-value">Awaiting lookup</div>
+            </div>
+            <div class="profile-meta-card">
+              <div class="profile-meta-label">SOURCE</div>
+              <div class="profile-meta-value muted" id="profile-source-value">No backend response yet</div>
+            </div>
+            <div class="profile-meta-card">
+              <div class="profile-meta-label">LAST VERIFIED</div>
+              <div class="profile-meta-value muted" id="profile-last-verified-value">Not checked yet</div>
+            </div>
+          </div>
+        </div>
+        <div class="profile-checks" id="profile-checks"></div>
+      </div>
       <div class="mt-16">
         <input id="api-url-input" class="search-input" type="url"
                placeholder="https://your-osint-backend.example.com (required)"
@@ -1166,6 +1318,7 @@ const RUN_ALL_LABEL_DEFAULT = 'RUN VISIBLE';
 const RUN_ALL_LABEL_STOP = 'STOP';
 const COMMAND_CATEGORIES = new Set(['all', 'Profile', 'Social', 'Content', 'Engagement', 'Contact', 'favorites']);
 const DEFAULT_COMMAND_UI_STATE = { category: 'all', search: '', sort: 'default' };
+const PROFILE_SUMMARY_ENDPOINTS = ['/api/profile-summary', '/api/profile', '/api/identity'];
 const MIN_BATCH_DELAY_MS = 0;
 const MAX_BATCH_DELAY_MS = 5000;
 const DEFAULT_FUNCTIONAL_SETTINGS = { useCache: true, autoRetry: true, allowContact: false, batchDelayMs: 400 };
@@ -1197,6 +1350,9 @@ let autoRetryEnabled = DEFAULT_FUNCTIONAL_SETTINGS.autoRetry;
 let allowContactCommands = DEFAULT_FUNCTIONAL_SETTINGS.allowContact;
 let batchDelayMs = DEFAULT_FUNCTIONAL_SETTINGS.batchDelayMs;
 let lastMediaUrl = '';
+let profileSummaryState = createEmptyProfileSummaryState();
+let activeIdentityRequestId = 0;
+let identityRefreshDebounceId = null;
 
 function printLine(body, type, text, delay) {
   return new Promise(resolve => {
@@ -1511,6 +1667,196 @@ async function copyLastMediaUrl() {
   }
 }
 
+function createEmptyProfileSummaryState(overrides = {}) {
+  return {
+    status: 'idle',
+    statusText: 'Enter a username and backend URL to fetch a verified Instagram ID and profile image.',
+    username: '',
+    instagramId: '',
+    profileImageUrl: '',
+    source: '',
+    verifiedAt: '',
+    checks: [],
+    ...overrides,
+  };
+}
+
+function setProfileSummaryState(overrides = {}) {
+  profileSummaryState = createEmptyProfileSummaryState({ ...profileSummaryState, ...overrides });
+  renderProfileSummary();
+}
+
+function formatVerificationTime(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleString();
+  } catch (_) {
+    return '';
+  }
+}
+
+function renderProfileSummary() {
+  const shell = document.getElementById('profile-avatar-shell');
+  const img = document.getElementById('profile-avatar-img');
+  const status = document.getElementById('profile-summary-status');
+  const username = document.getElementById('profile-username-value');
+  const instagramId = document.getElementById('profile-id-value');
+  const source = document.getElementById('profile-source-value');
+  const verified = document.getElementById('profile-last-verified-value');
+  const checksHost = document.getElementById('profile-checks');
+  const refreshBtn = document.getElementById('refresh-identity-btn');
+  if (!shell || !img || !status || !username || !instagramId || !source || !verified || !checksHost) return;
+
+  const hasImage = !!profileSummaryState.profileImageUrl;
+  shell.classList.toggle('has-image', hasImage);
+  img.src = hasImage ? profileSummaryState.profileImageUrl : '';
+  img.alt = profileSummaryState.username
+    ? `Verified profile image for @${profileSummaryState.username}`
+    : 'Instagram profile preview';
+  status.textContent = profileSummaryState.statusText || 'No profile summary yet.';
+  username.textContent = profileSummaryState.username ? `@${profileSummaryState.username}` : 'Awaiting lookup';
+  username.classList.toggle('muted', !profileSummaryState.username);
+  instagramId.textContent = profileSummaryState.instagramId || 'Not verified yet';
+  instagramId.classList.toggle('muted', !profileSummaryState.instagramId);
+  source.textContent = profileSummaryState.source || 'No backend response yet';
+  source.classList.toggle('muted', !profileSummaryState.source);
+  verified.textContent = profileSummaryState.verifiedAt ? formatVerificationTime(profileSummaryState.verifiedAt) : 'Not checked yet';
+  verified.classList.toggle('muted', !profileSummaryState.verifiedAt);
+  if (refreshBtn) refreshBtn.disabled = profileSummaryState.status === 'loading' || commandInFlight;
+
+  checksHost.innerHTML = '';
+  const checks = Array.isArray(profileSummaryState.checks) ? profileSummaryState.checks : [];
+  if (!checks.length) {
+    const empty = document.createElement('div');
+    empty.className = 'profile-check';
+    empty.innerHTML = '<div class="profile-check-head"><span class="dot dot-yellow"></span><span>Waiting for verification</span></div><div class="profile-check-detail">A live backend response is required before showing the Instagram ID and avatar.</div>';
+    checksHost.appendChild(empty);
+    return;
+  }
+
+  checks.forEach(check => {
+    const item = document.createElement('div');
+    item.className = `profile-check ${check.ok ? 'ok' : 'fail'}`;
+    item.innerHTML = `
+      <div class="profile-check-head">
+        <span class="dot ${check.ok ? 'dot-green' : 'dot-red'}"></span>
+        <span>${check.label}</span>
+      </div>
+      <div class="profile-check-detail">${check.detail}</div>`;
+    checksHost.appendChild(item);
+  });
+}
+
+function normalizeInstagramId(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(Math.trunc(value));
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const match = text.match(/\b\d{4,}\b/);
+  return match ? match[0] : '';
+}
+
+function firstNonEmptyValue(values) {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function getNestedValue(source, path) {
+  const parts = String(path || '').split('.');
+  let current = source;
+  for (const part of parts) {
+    if (!current || typeof current !== 'object' || !(part in current)) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function pickNestedValue(source, paths) {
+  return firstNonEmptyValue((paths || []).map(path => getNestedValue(source, path)));
+}
+
+function isValidHttpUrl(raw) {
+  try {
+    const parsed = new URL(String(raw || '').trim());
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch (_) {
+    return false;
+  }
+}
+
+function extractIdentityFromStructuredPayload(data, fallbackTarget = '') {
+  if (!data || typeof data !== 'object') return null;
+  const username = firstNonEmptyValue([
+    pickNestedValue(data, ['username', 'user.username', 'profile.username', 'account.username', 'data.username']),
+    fallbackTarget,
+  ]).replace(/^@/, '');
+  const instagramId = normalizeInstagramId(firstNonEmptyValue([
+    pickNestedValue(data, ['instagram_id', 'instagramId', 'id', 'pk', 'user.id', 'user.pk', 'user.instagram_id', 'profile.id', 'profile.pk', 'account.id', 'account.pk', 'data.id', 'data.pk']),
+  ]));
+  const profileImageUrl = firstNonEmptyValue([
+    pickNestedValue(data, ['profile_image_url', 'profile_image', 'profile_pic_url_hd', 'profile_pic_url', 'avatar_url', 'image_url', 'user.profile_pic_url_hd', 'user.profile_pic_url', 'profile.profile_pic_url_hd', 'profile.profile_pic_url', 'account.profile_pic_url_hd', 'account.profile_pic_url', 'data.profile_pic_url_hd', 'data.profile_pic_url']),
+  ]);
+  return {
+    username,
+    instagramId,
+    profileImageUrl,
+  };
+}
+
+function extractIdentityFromLines(lines, fallbackTarget = '') {
+  if (!Array.isArray(lines)) return null;
+  let username = '';
+  let instagramId = '';
+  const imageCandidates = [];
+  lines.forEach(([, rawText]) => {
+    const text = String(rawText || '').trim();
+    if (!text) return;
+    const usernameMatch = text.match(/\b(?:username|user name|target|account|profile)\b\s*[:=#-]\s*@?([A-Za-z0-9._]{1,30})\b/i);
+    if (!username && usernameMatch) username = usernameMatch[1];
+    const idMatch = text.match(/\b(?:instagram\s*id|profile\s*id|user\s*id|account\s*id|pk|id)\b\s*[:=#-]\s*(\d{4,})\b/i);
+    if (!instagramId && idMatch) instagramId = idMatch[1];
+    extractUrlsFromText(text).forEach(url => {
+      if (looksLikeMediaUrl(url)) imageCandidates.push(url);
+    });
+  });
+  return {
+    username: (username || fallbackTarget || '').replace(/^@/, ''),
+    instagramId: normalizeInstagramId(instagramId),
+    profileImageUrl: imageCandidates[0] || '',
+  };
+}
+
+function mergeIdentityCandidates(...candidates) {
+  const merged = { username: '', instagramId: '', profileImageUrl: '' };
+  candidates.filter(Boolean).forEach(candidate => {
+    if (!merged.username && candidate.username) merged.username = String(candidate.username).replace(/^@/, '');
+    if (!merged.instagramId && candidate.instagramId) merged.instagramId = normalizeInstagramId(candidate.instagramId);
+    if (!merged.profileImageUrl && candidate.profileImageUrl) merged.profileImageUrl = String(candidate.profileImageUrl).trim();
+  });
+  return merged;
+}
+
+function usernamesMatch(expected, actual) {
+  if (!expected || !actual) return true;
+  return String(expected).replace(/^@/, '').toLowerCase() === String(actual).replace(/^@/, '').toLowerCase();
+}
+
+function preloadImage(url) {
+  return new Promise(resolve => {
+    if (!isValidHttpUrl(url)) {
+      resolve(false);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.referrerPolicy = 'no-referrer';
+    img.src = url;
+  });
+}
+
 function validateApiBaseUrl(base) {
   if (!base) return 'Set backend URL first';
   try {
@@ -1609,26 +1955,48 @@ function getValidatedTarget() {
 }
 
 async function fetchLiveLines(target, cmd) {
-  const base = getApiBaseUrl();
-  const baseErr = validateApiBaseUrl(base);
-  if (baseErr) {
+  const result = await requestLiveCommandPayload(target, cmd);
+  if (!result.ok) {
     return [
       ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
       ['dim', '════════════════════════════════════════════════'],
-      ['warn', `[!] ${baseErr}`],
-      ['info', '  Update Backend API URL, then run the command again.'],
+      ['warn', `[!] ${result.errorMessage}`],
+      ['info', result.type === 'config'
+        ? '  Update Backend API URL, then run the command again.'
+        : result.type === 'empty'
+          ? '  Backend responded, but no usable output was returned.'
+          : autoRetryEnabled
+            ? '  Retry failed. No fallback output is enabled.'
+            : '  No fallback output is enabled.'],
     ];
   }
-  if (useCacheEnabled) {
+  return [
+    ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
+    ['dim', '════════════════════════════════════════════════'],
+    ['label', `[ ${cmd} — ${result.source}${result.attempt > 1 ? ` retry #${result.attempt - 1}` : ''} ]`],
+    ...result.lines,
+    ['success', `[✔] Command completed${result.source === 'cache' ? ' (cached)' : ''}`],
+  ];
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = API_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { method: 'GET', signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function requestLiveCommandPayload(target, cmd, options = {}) {
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) return { ok: false, type: 'config', errorMessage: baseErr };
+  if (useCacheEnabled && !options.skipCache) {
     const cached = getCachedLiveLines(target, cmd);
     if (cached && cached.length) {
-      return [
-        ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
-        ['dim', '════════════════════════════════════════════════'],
-        ['label', `[ ${cmd} — cache ]`],
-        ...cached,
-        ['success', '[✔] Command completed (cached)'],
-      ];
+      return { ok: true, lines: cached, source: 'cache', attempt: 0, data: { output: cached.map(([, text]) => text) } };
     }
   }
   const url = `${base}/api/command?target=${encodeURIComponent(target)}&command=${encodeURIComponent(cmd)}`;
@@ -1637,42 +2005,205 @@ async function fetchLiveLines(target, cmd) {
   let lastError = null;
   while (attempt < maxAttempts) {
     attempt += 1;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
     try {
-      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      const res = await fetchJsonWithTimeout(url, API_TIMEOUT_MS);
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
       const data = await res.json();
       const payload = parseLiveOutputLines(data);
       if (!hasMeaningfulOutput(payload)) {
-        return [
-          ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
-          ['dim', '════════════════════════════════════════════════'],
-          ['warn', '[!] Live backend returned no output'],
-        ];
+        return { ok: false, type: 'empty', errorMessage: 'Live backend returned no output', data };
       }
       if (useCacheEnabled) setCachedLiveLines(target, cmd, payload);
-      return [
-        ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
-        ['dim', '════════════════════════════════════════════════'],
-        ['label', `[ ${cmd} — live${attempt > 1 ? ` retry #${attempt - 1}` : ''} ]`],
-        ...payload,
-        ['success', '[✔] Command completed'],
-      ];
+      return { ok: true, lines: payload, source: 'live', attempt, data };
     } catch (err) {
       lastError = err;
       if (attempt < maxAttempts) continue;
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
   const msg = lastError?.name === 'AbortError' ? 'request timed out' : 'connection error';
+  return { ok: false, type: 'network', errorMessage: `Live request failed: ${msg}` };
+}
+
+async function requestProfileSummaryEndpoint(target) {
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) return { ok: false, reason: baseErr };
+  for (const endpoint of PROFILE_SUMMARY_ENDPOINTS) {
+    try {
+      const response = await fetchJsonWithTimeout(`${base}${endpoint}?target=${encodeURIComponent(target)}`, API_TIMEOUT_MS);
+      if (response.status === 404 || !response.ok) continue;
+      const data = await response.json();
+      const candidate = extractIdentityFromStructuredPayload(data, target);
+      if (candidate && (candidate.instagramId || candidate.profileImageUrl)) {
+        return { ok: true, candidate, source: endpoint.replace('/api/', 'endpoint: ') };
+      }
+    } catch (_) {}
+  }
+  return { ok: false, reason: 'No dedicated profile summary endpoint responded.' };
+}
+
+function buildIdentityChecks(target, summary, runtime) {
   return [
-    ['prompt', `oceangram@osint:~$ python3 main.py ${target} --command ${cmd}`],
-    ['dim', '════════════════════════════════════════════════'],
-    ['warn', `[!] Live request failed: ${msg}`],
-    ['info', autoRetryEnabled ? '  Retry failed. No fallback output is enabled.' : '  No fallback output is enabled.'],
+    {
+      label: 'Backend source responded',
+      ok: !!runtime.responded,
+      detail: runtime.responded ? `Identity data came from ${summary.source}.` : 'No usable live backend response was received.',
+    },
+    {
+      label: 'Requested target matched',
+      ok: !!runtime.targetMatched,
+      detail: runtime.targetMatched
+        ? `The returned profile matched @${target}.`
+        : `The backend response did not match the requested username @${target}.`,
+    },
+    {
+      label: 'Instagram ID extracted',
+      ok: !!summary.instagramId,
+      detail: summary.instagramId ? `Found numeric Instagram ID ${summary.instagramId}.` : 'No numeric Instagram ID could be verified.',
+    },
+    {
+      label: 'Profile image URL verified',
+      ok: !!runtime.imageUrlValid,
+      detail: runtime.imageUrlValid ? 'A valid http(s) profile image URL was extracted.' : 'No valid http(s) profile image URL was found.',
+    },
+    {
+      label: 'Profile image loaded',
+      ok: !!runtime.imageLoaded,
+      detail: runtime.imageLoaded ? 'The extracted avatar URL successfully loaded in the browser.' : 'The extracted avatar URL could not be loaded, so it was rejected.',
+    },
   ];
+}
+
+async function loadProfileSummary(target, options = {}) {
+  const expectedTarget = String(target || '').replace(/^@/, '').trim();
+  const validationError = validateTarget(expectedTarget);
+  const baseErr = validateApiBaseUrl(getApiBaseUrl());
+  if (validationError) {
+    setProfileSummaryState(createEmptyProfileSummaryState({ statusText: validationError, username: expectedTarget }));
+    return null;
+  }
+  if (baseErr) {
+    setProfileSummaryState(createEmptyProfileSummaryState({ statusText: baseErr, username: expectedTarget }));
+    return null;
+  }
+
+  const requestId = ++activeIdentityRequestId;
+  setProfileSummaryState({
+    status: 'loading',
+    statusText: options.manual
+      ? `Refreshing minimum identity summary for @${expectedTarget}...`
+      : `Verifying Instagram ID and profile image for @${expectedTarget}...`,
+    username: expectedTarget,
+    instagramId: '',
+    profileImageUrl: '',
+    source: '',
+    verifiedAt: '',
+    checks: [],
+  });
+
+  const endpointResult = await requestProfileSummaryEndpoint(expectedTarget);
+  const [infoResult, propicResult] = await Promise.all([
+    requestLiveCommandPayload(expectedTarget, 'info'),
+    requestLiveCommandPayload(expectedTarget, 'propic'),
+  ]);
+  if (requestId !== activeIdentityRequestId) return null;
+
+  const infoIdentity = infoResult.ok
+    ? mergeIdentityCandidates(
+      extractIdentityFromStructuredPayload(infoResult.data, expectedTarget),
+      extractIdentityFromLines(infoResult.lines, expectedTarget),
+    )
+    : null;
+  const propicIdentity = propicResult.ok
+    ? mergeIdentityCandidates(
+      extractIdentityFromStructuredPayload(propicResult.data, expectedTarget),
+      extractIdentityFromLines(propicResult.lines, expectedTarget),
+    )
+    : null;
+  const endpointIdentity = endpointResult.ok ? endpointResult.candidate : null;
+  const mergedIdentity = {
+    username: mergeIdentityCandidates(endpointIdentity, infoIdentity, propicIdentity, { username: expectedTarget }).username,
+    instagramId: mergeIdentityCandidates(endpointIdentity, infoIdentity, propicIdentity).instagramId,
+    profileImageUrl: mergeIdentityCandidates(endpointIdentity, propicIdentity, infoIdentity).profileImageUrl,
+  };
+  const targetMatched = usernamesMatch(expectedTarget, mergedIdentity.username);
+  const imageUrlValid = isValidHttpUrl(mergedIdentity.profileImageUrl);
+  const imageLoaded = imageUrlValid ? await preloadImage(mergedIdentity.profileImageUrl) : false;
+  if (requestId !== activeIdentityRequestId) return null;
+
+  const responded = !!(endpointResult.ok || infoResult.ok || propicResult.ok);
+  const usableSummary = targetMatched
+    ? {
+      username: mergedIdentity.username || expectedTarget,
+      instagramId: mergedIdentity.instagramId,
+      profileImageUrl: imageLoaded ? mergedIdentity.profileImageUrl : '',
+      source: endpointResult.ok
+        ? endpointResult.source
+        : infoResult.ok && propicResult.ok
+          ? 'commands: info + propic'
+          : infoResult.ok
+            ? 'command: info'
+            : propicResult.ok
+              ? 'command: propic'
+              : '',
+    }
+    : {
+      username: expectedTarget,
+      instagramId: '',
+      profileImageUrl: '',
+      source: responded ? 'backend mismatch rejected' : '',
+    };
+  const checks = buildIdentityChecks(expectedTarget, usableSummary, { responded, targetMatched, imageUrlValid, imageLoaded });
+  const fullyVerified = responded && targetMatched && !!usableSummary.instagramId && imageLoaded;
+  setProfileSummaryState({
+    status: fullyVerified ? 'ready' : 'partial',
+    statusText: fullyVerified
+      ? `Verified @${usableSummary.username}: live Instagram ID and loadable profile image confirmed.`
+      : responded
+        ? `Partial verification for @${expectedTarget}. Review the failed checks below before trusting the data.`
+        : `Unable to verify @${expectedTarget}. Backend did not return usable identity data.`,
+    username: usableSummary.username,
+    instagramId: usableSummary.instagramId,
+    profileImageUrl: usableSummary.profileImageUrl,
+    source: usableSummary.source,
+    verifiedAt: responded ? new Date().toISOString() : '',
+    checks,
+  });
+  return profileSummaryState;
+}
+
+function scheduleIdentitySummaryRefresh() {
+  if (identityRefreshDebounceId) {
+    clearTimeout(identityRefreshDebounceId);
+    identityRefreshDebounceId = null;
+  }
+  const target = getTarget();
+  if (!target) {
+    activeIdentityRequestId += 1;
+    setProfileSummaryState(createEmptyProfileSummaryState());
+    return;
+  }
+  const validationError = validateTarget(target);
+  const baseErr = validateApiBaseUrl(getApiBaseUrl());
+  if (validationError || baseErr) {
+    setProfileSummaryState(createEmptyProfileSummaryState({
+      username: target,
+      statusText: validationError || baseErr,
+    }));
+    return;
+  }
+  identityRefreshDebounceId = setTimeout(() => {
+    loadProfileSummary(target);
+  }, 500);
+}
+
+function refreshIdentitySummary() {
+  const target = getTarget();
+  if (!target) {
+    setTargetValidation('Enter a target username first.');
+    return;
+  }
+  loadProfileSummary(target, { manual: true });
 }
 
 function getVisibleCommands() {
@@ -1932,6 +2463,8 @@ function setCommandBusyState(isBusy) {
   if (runAllBtn && !runAllInProgress) runAllBtn.disabled = isBusy;
   const clearCacheBtn = document.getElementById('clear-cache-btn');
   if (clearCacheBtn) clearCacheBtn.disabled = isBusy;
+  const refreshIdentityBtn = document.getElementById('refresh-identity-btn');
+  if (refreshIdentityBtn) refreshIdentityBtn.disabled = isBusy || profileSummaryState.status === 'loading';
   ['open-media-btn', 'save-media-btn', 'copy-media-btn'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn && !lastMediaUrl) btn.disabled = true;
@@ -1978,6 +2511,7 @@ async function runCommand(c, providedTarget = null) {
 function startScan() {
   const target = getValidatedTarget();
   if (!target) return;
+  loadProfileSummary(target);
   addRecentTarget(target);
   const btn = document.getElementById('dive-btn');
   btn.classList.add('loading');
@@ -2431,11 +2965,13 @@ if (apiInput) {
     persistApiBaseUrl(normalized);
     setLiveModePill();
     scheduleApiHealthCheck();
+    scheduleIdentitySummaryRefresh();
   });
   apiInput.addEventListener('input', () => {
     persistApiBaseUrl(getApiBaseUrl());
     setLiveModePill();
     scheduleApiHealthCheck();
+    scheduleIdentitySummaryRefresh();
   });
 }
 const cmdSearchInput = document.getElementById('command-search-input');
@@ -2498,7 +3034,9 @@ const targetInput = document.getElementById('target-input');
 if (targetInput) {
   targetInput.addEventListener('input', () => {
     if (!targetInput.value.trim()) setTargetValidation('');
+    scheduleIdentitySummaryRefresh();
   });
+  targetInput.addEventListener('change', () => scheduleIdentitySummaryRefresh());
 }
 document.addEventListener('keydown', (e) => {
   const key = (e.key || '').toLowerCase();
@@ -2550,6 +3088,7 @@ renderRecentCommands();
 updateRunCountPill();
 updateCacheCountPill();
 updateMediaButtons();
+renderProfileSummary();
 resetTerminal();
 renderCards();
 </script>
