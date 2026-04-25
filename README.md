@@ -44,7 +44,8 @@ https://<your-username>.github.io/instagram-downloader-/
 - **Filterable command grid** — filter by category tabs
 - **Quick-start code block** — copy the Osintgram install commands in one click
 - **Fully responsive** — works on mobile and desktop
-- **Zero dependencies** — pure HTML/CSS/JS, no frameworks required
+- **Bundled production script** — modular source files are bundled into a single minified browser asset with esbuild
+- **Zero runtime dependencies** — the shipped UI still runs as static HTML/CSS/JS in the browser
 
 ## 🧰 OSINT Commands Showcased
 
@@ -97,6 +98,30 @@ If one of those endpoints is available, OceanGram uses it first for the minimum 
 If no backend URL is set, the terminal shows `[!] No backend API URL configured`.
 If the backend request fails, the terminal shows `[!] Live request failed: ...`.
 No fallback output is used in either case.
+
+## 🧱 Source layout
+
+OceanGram now keeps the browser logic under `/home/runner/work/instagram-downloader-/instagram-downloader-/src`:
+
+- `src/app.js` — UI rendering, stateful interactions, and bootstrapping
+- `src/commands.js` — command catalog metadata
+- `src/api-client.js` — provider-oriented API client wiring for the current backend mode and future authenticated/local providers
+- `src/effects.js` — copy helper plus visual/background effects
+
+The current shipped build still uses the existing backend provider. The API client module is structured so a future local authenticated Instagram-session provider can be added without returning to a single inline script.
+
+## 🛠️ Build the bundled asset
+
+```bash
+npm install
+npm run build
+```
+
+This writes the production bundle to:
+
+```bash
+assets/app.bundle.js
+```
 
 ## ⚠️ Disclaimer
 
