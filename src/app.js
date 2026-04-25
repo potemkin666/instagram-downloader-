@@ -7,6 +7,9 @@ const apiClient = createApiClient({
     fetchLiveLines,
     loadProfileSummary,
     checkApiHealth,
+    loadAuthSession,
+    login: loginBackendSession,
+    logout: logoutBackendSession,
   },
 });
 
@@ -114,6 +117,7 @@ const EXPLICIT_INSTAGRAM_ID_REGEX = new RegExp(String.raw`\b(?:instagram\s*id|pr
 const MEDIA_HOST_SUFFIXES = ['instagram.com', 'cdninstagram.com', 'fbcdn.net'];
 const MAX_RECENT_COMMANDS = 8;
 const MAX_RECENT_TARGETS = 8;
+const AUTH_SESSION_REFRESH_DEBOUNCE_MS = 400;
 const INITIAL_TERMINAL_LINES = [
   ['prompt', '🌊 OceanGram v1.0.0 — bioluminescent shell ready'],
   ['dim', '════════════════════════════════════════════════'],
@@ -142,6 +146,10 @@ let profileSummaryState = createEmptyProfileSummaryState();
 let activeIdentityRequestId = 0;
 let identityRefreshDebounceId = null;
 let offlineMode = typeof navigator !== 'undefined' && navigator.onLine === false;
+let authSessionState = createEmptyAuthSessionState();
+let activeAuthSessionRequestId = 0;
+let authSessionRefreshDebounceId = null;
+let authRequestInFlight = false;
 
 function createStateStore(storage = window.localStorage) {
   const safeGet = key => {
@@ -238,6 +246,62 @@ function canUseLiveBackend({ notify = false, message = OFFLINE_MESSAGE } = {}) {
   setRequestStatusPill('warn', 'Offline — reconnect for live commands');
   if (notify) showToast(message, { kind: 'warn', title: 'OFFLINE' });
   return false;
+}
+
+function createEmptyAuthSessionState(overrides = {}) {
+  return {
+    status: 'idle',
+    authenticated: false,
+    available: false,
+    username: '',
+    source: '',
+    statusText: 'Connect a backend URL to check authentication state.',
+    checkedAt: '',
+    ...overrides,
+  };
+}
+
+function setAuthSessionState(overrides = {}) {
+  authSessionState = createEmptyAuthSessionState({ ...authSessionState, ...overrides });
+  renderAuthSessionState();
+}
+
+function formatAuthSourceLabel(source) {
+  const value = String(source || '').trim();
+  if (!value) return '';
+  return value.replace(/[_-]+/g, ' ');
+}
+
+function renderAuthSessionState() {
+  const pill = document.getElementById('auth-session-pill');
+  const status = document.getElementById('auth-session-status');
+  const loginBtn = document.getElementById('auth-login-btn');
+  const logoutBtn = document.getElementById('auth-logout-btn');
+  const refreshBtn = document.getElementById('auth-refresh-btn');
+  const userInput = document.getElementById('auth-username-input');
+  const passwordInput = document.getElementById('auth-password-input');
+  const cookieInput = document.getElementById('auth-cookie-input');
+
+  if (status) status.textContent = authSessionState.statusText || 'No backend auth status yet.';
+  if (pill) {
+    if (authSessionState.authenticated) {
+      pill.innerHTML = `<span class="dot dot-green"></span>Authenticated${authSessionState.username ? ` as @${authSessionState.username}` : ''}`;
+    } else if (authSessionState.status === 'loading') {
+      pill.innerHTML = '<span class="dot dot-yellow"></span>Checking auth session';
+    } else if (authSessionState.available) {
+      pill.innerHTML = '<span class="dot dot-yellow"></span>Signed out';
+    } else {
+      pill.innerHTML = '<span class="dot dot-yellow"></span>Backend auth unavailable';
+    }
+  }
+
+  const disableAuthActions = authRequestInFlight || commandInFlight || offlineMode;
+  if (loginBtn) loginBtn.disabled = disableAuthActions;
+  if (logoutBtn) logoutBtn.disabled = disableAuthActions || !authSessionState.authenticated;
+  if (refreshBtn) refreshBtn.disabled = disableAuthActions;
+  if (userInput) userInput.disabled = authRequestInFlight || commandInFlight || offlineMode;
+  if (passwordInput) passwordInput.disabled = authRequestInFlight || commandInFlight || offlineMode;
+  if (cookieInput) cookieInput.disabled = authRequestInFlight || commandInFlight || offlineMode;
 }
 
 function printLine(body, type, text, delay) {
@@ -514,6 +578,7 @@ function syncLiveActionAvailability() {
   const refreshIdentityBtn = document.getElementById('refresh-identity-btn');
   if (refreshIdentityBtn) refreshIdentityBtn.disabled = disableLiveActions || profileSummaryState.status === 'loading';
   updateMediaButtons();
+  renderAuthSessionState();
 }
 
 function updateMediaButtons() {
@@ -541,6 +606,7 @@ function updateConnectivityState({ announce = false } = {}) {
     setRequestStatusPill('warn', 'Offline — reconnect for live commands');
   } else if (!commandInFlight && !runAllInProgress) {
     setRequestStatusPill('ok', 'Requests idle');
+    scheduleAuthSessionRefresh({ immediate: true });
   }
   syncLiveActionAvailability();
   if (announce || changed) {
@@ -870,6 +936,7 @@ function syncApiInputState({ validateOnBlur = false } = {}) {
   persistApiBaseUrl(normalized);
   setLiveModePill();
   scheduleApiHealthCheck();
+  scheduleAuthSessionRefresh();
   scheduleIdentitySummaryRefresh();
   const error = normalized ? validateApiBaseUrl(normalized) : '';
   if (validateOnBlur) setTargetValidation(error);
@@ -902,6 +969,227 @@ function clearDefaultApiUrl() {
   persistAppConfig();
   renderDefaultApiConfig();
   showToast('Cleared saved default API URL.', { kind: 'success' });
+}
+
+function readAuthFormValues() {
+  const usernameInput = document.getElementById('auth-username-input');
+  const passwordInput = document.getElementById('auth-password-input');
+  const cookieInput = document.getElementById('auth-cookie-input');
+  return {
+    username: (usernameInput?.value || '').trim().replace(/^@/, ''),
+    password: passwordInput?.value || '',
+    cookies: (cookieInput?.value || '').trim(),
+  };
+}
+
+function clearAuthSecrets() {
+  const passwordInput = document.getElementById('auth-password-input');
+  const cookieInput = document.getElementById('auth-cookie-input');
+  if (passwordInput) passwordInput.value = '';
+  if (cookieInput) cookieInput.value = '';
+}
+
+function scheduleAuthSessionRefresh({ immediate = false } = {}) {
+  if (authSessionRefreshDebounceId) {
+    clearTimeout(authSessionRefreshDebounceId);
+    authSessionRefreshDebounceId = null;
+  }
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (!base || baseErr) {
+    activeAuthSessionRequestId += 1;
+    setAuthSessionState(createEmptyAuthSessionState({
+      available: false,
+      statusText: baseErr || 'Connect a backend URL to check authentication state.',
+      checkedAt: '',
+    }));
+    return;
+  }
+  if (!canUseLiveBackend()) {
+    activeAuthSessionRequestId += 1;
+    setAuthSessionState(createEmptyAuthSessionState({
+      available: false,
+      statusText: OFFLINE_MESSAGE,
+      checkedAt: '',
+    }));
+    return;
+  }
+  const trigger = () => apiClient.loadAuthSession();
+  if (immediate) {
+    trigger();
+    return;
+  }
+  authSessionRefreshDebounceId = setTimeout(trigger, AUTH_SESSION_REFRESH_DEBOUNCE_MS);
+}
+
+async function loadAuthSession(options = {}) {
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (!base || baseErr) {
+    setAuthSessionState(createEmptyAuthSessionState({
+      available: false,
+      statusText: baseErr || 'Connect a backend URL to check authentication state.',
+      checkedAt: '',
+    }));
+    return authSessionState;
+  }
+  if (!canUseLiveBackend()) {
+    setAuthSessionState(createEmptyAuthSessionState({
+      available: false,
+      statusText: OFFLINE_MESSAGE,
+      checkedAt: '',
+    }));
+    return authSessionState;
+  }
+
+  const requestId = ++activeAuthSessionRequestId;
+  authRequestInFlight = true;
+  setAuthSessionState({
+    status: 'loading',
+    available: true,
+    statusText: options.manual ? 'Refreshing backend authentication status...' : 'Checking backend authentication status...',
+  });
+
+  try {
+    const url = new URL('/api/session', `${base}/`);
+    const response = await fetchJsonWithTimeout(url.toString(), { method: 'GET' }, API_TIMEOUT_MS);
+    if (!response.ok) throw createHttpStatusError(response);
+    const data = await parseJsonResponseStrict(response);
+    if (requestId !== activeAuthSessionRequestId) return authSessionState;
+    const authenticated = data?.authenticated === true;
+    const username = String(data?.username || '').trim().replace(/^@/, '');
+    setAuthSessionState({
+      status: authenticated ? 'ready' : 'signed-out',
+      authenticated,
+      available: true,
+      username,
+      source: formatAuthSourceLabel(data?.source || data?.mode || ''),
+      statusText: authenticated
+        ? `Backend session is authenticated${username ? ` as @${username}` : ''}.${data?.source ? ` Source: ${formatAuthSourceLabel(data.source)}.` : ''}`
+        : String(data?.message || 'Backend session is signed out. Public-profile requests remain available.'),
+      checkedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    if (requestId !== activeAuthSessionRequestId) return authSessionState;
+    const detail = err?.status ? `HTTP ${err.status}` : 'Backend session check failed.';
+    setAuthSessionState(createEmptyAuthSessionState({
+      status: 'error',
+      available: false,
+      statusText: `Unable to read backend auth status (${detail}).`,
+      checkedAt: '',
+    }));
+  } finally {
+    authRequestInFlight = false;
+    renderAuthSessionState();
+  }
+  return authSessionState;
+}
+
+async function loginBackendSession(payload = {}) {
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
+    showToast(baseErr, { kind: 'warn', title: 'AUTH' });
+    return { ok: false, errorMessage: baseErr };
+  }
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before signing in.' })) {
+    return { ok: false, errorMessage: OFFLINE_MESSAGE };
+  }
+  authRequestInFlight = true;
+  renderAuthSessionState();
+  try {
+    const url = new URL('/api/login', `${base}/`);
+    const response = await fetchJsonWithTimeout(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }, API_TIMEOUT_MS);
+    if (!response.ok) throw createHttpStatusError(response);
+    const data = await parseJsonResponseStrict(response);
+    clearAuthSecrets();
+    await loadAuthSession({ manual: true });
+    return { ok: true, data };
+  } catch (err) {
+    const message = err?.status === 401 || err?.status === 403
+      ? 'Backend rejected the Instagram credentials or cookies.'
+      : err?.status
+        ? `Backend login failed with HTTP ${err.status}.`
+        : 'Backend login failed.';
+    showToast(message, { kind: 'error', title: 'AUTH' });
+    setAuthSessionState(createEmptyAuthSessionState({
+      status: 'error',
+      available: true,
+      statusText: message,
+    }));
+    return { ok: false, errorMessage: message };
+  } finally {
+    authRequestInFlight = false;
+    renderAuthSessionState();
+  }
+}
+
+async function logoutBackendSession() {
+  const base = getApiBaseUrl();
+  const baseErr = validateApiBaseUrl(base);
+  if (baseErr) {
+    showToast(baseErr, { kind: 'warn', title: 'AUTH' });
+    return { ok: false, errorMessage: baseErr };
+  }
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before signing out.' })) {
+    return { ok: false, errorMessage: OFFLINE_MESSAGE };
+  }
+  authRequestInFlight = true;
+  renderAuthSessionState();
+  try {
+    const url = new URL('/api/logout', `${base}/`);
+    const response = await fetchJsonWithTimeout(url.toString(), { method: 'POST' }, API_TIMEOUT_MS);
+    if (!response.ok) throw createHttpStatusError(response);
+    clearAuthSecrets();
+    setAuthSessionState(createEmptyAuthSessionState({
+      status: 'signed-out',
+      available: true,
+      statusText: 'Backend session signed out. Public-profile requests remain available.',
+      checkedAt: new Date().toISOString(),
+    }));
+    return { ok: true };
+  } catch (err) {
+    const message = err?.status ? `Backend logout failed with HTTP ${err.status}.` : 'Backend logout failed.';
+    showToast(message, { kind: 'error', title: 'AUTH' });
+    return { ok: false, errorMessage: message };
+  } finally {
+    authRequestInFlight = false;
+    renderAuthSessionState();
+  }
+}
+
+async function submitAuthLogin() {
+  const { username, password, cookies } = readAuthFormValues();
+  if (!username) {
+    showToast('Enter an Instagram username for the backend session.', { kind: 'warn', title: 'AUTH' });
+    return;
+  }
+  if (!password && !cookies) {
+    showToast('Enter either a password or session cookies before signing in.', { kind: 'warn', title: 'AUTH' });
+    return;
+  }
+  const result = await apiClient.login({ username, password, cookies });
+  if (result.ok) {
+    showToast('Backend session established.', { kind: 'success', title: 'AUTH' });
+    scheduleIdentitySummaryRefresh();
+  }
+}
+
+async function submitAuthLogout() {
+  const result = await apiClient.logout();
+  if (result.ok) {
+    showToast('Backend session cleared.', { kind: 'success', title: 'AUTH' });
+    scheduleIdentitySummaryRefresh();
+  }
+}
+
+function refreshAuthSession() {
+  if (!canUseLiveBackend({ notify: true, message: 'Browser is offline. Reconnect before refreshing auth status.' })) return;
+  apiClient.loadAuthSession({ manual: true });
 }
 
 function scheduleApiHealthCheck() {
@@ -1114,7 +1402,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   if (!SUPPORTS_ABORT_CONTROLLER) {
     // Older browsers cannot cancel the underlying request, so we reject locally and ignore any late response.
     return Promise.race([
-      fetch(url, options),
+        fetch(url, { credentials: 'include', ...options }),
       new Promise((_, reject) => {
         setTimeout(() => {
           const err = new Error('Timed out');
@@ -1127,14 +1415,14 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(url, { credentials: 'include', ...options, signal: controller.signal });
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-async function fetchJsonWithTimeout(url, timeoutMs = API_TIMEOUT_MS) {
-  return fetchWithTimeout(url, { method: 'GET' }, timeoutMs);
+async function fetchJsonWithTimeout(url, options = { method: 'GET' }, timeoutMs = API_TIMEOUT_MS) {
+  return fetchWithTimeout(url, options, timeoutMs);
 }
 
 async function parseJsonResponseStrict(response) {
@@ -1211,7 +1499,7 @@ async function requestLiveCommandPayload(target, cmd, options = {}) {
       retryAfterRateLimit = false;
       try {
         setRequestStatusPill('warn', `Requesting ${cmd}...`);
-        const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
+        const response = await fetchJsonWithTimeout(url.toString(), { method: 'GET' }, API_TIMEOUT_MS);
         if (response.status === 429) {
           lastError = createHttpStatusError(response);
           if (!rateLimitRetryUsed) {
@@ -1267,7 +1555,7 @@ async function requestProfileSummaryEndpoint(target) {
     try {
       const url = new URL(endpoint, `${base}/`);
       url.searchParams.set('target', target);
-      const response = await fetchJsonWithTimeout(url.toString(), API_TIMEOUT_MS);
+      const response = await fetchJsonWithTimeout(url.toString(), { method: 'GET' }, API_TIMEOUT_MS);
       if (!response.ok) {
         lastReason = `Profile summary endpoint responded ${response.status}`;
         continue;
@@ -1860,6 +2148,7 @@ document.getElementById('target-input').addEventListener('keydown', (e) => {
 Object.assign(globalThis, {
   startScan,
   refreshIdentitySummary,
+  refreshAuthSession,
   checkApiHealth,
   clearRecentTargets,
   runFirstVisibleCommand,
@@ -1913,6 +2202,23 @@ const clearDefaultApiBtn = document.getElementById('clear-default-api-btn');
 if (clearDefaultApiBtn) {
   clearDefaultApiBtn.addEventListener('click', clearDefaultApiUrl);
 }
+const authUsernameInput = document.getElementById('auth-username-input');
+const authPasswordInput = document.getElementById('auth-password-input');
+const authCookieInput = document.getElementById('auth-cookie-input');
+const authLoginBtn = document.getElementById('auth-login-btn');
+const authLogoutBtn = document.getElementById('auth-logout-btn');
+const authRefreshBtn = document.getElementById('auth-refresh-btn');
+if (authLoginBtn) authLoginBtn.addEventListener('click', submitAuthLogin);
+if (authLogoutBtn) authLogoutBtn.addEventListener('click', submitAuthLogout);
+if (authRefreshBtn) authRefreshBtn.addEventListener('click', refreshAuthSession);
+[authUsernameInput, authPasswordInput, authCookieInput].forEach(input => {
+  if (!input) return;
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    submitAuthLogin();
+  });
+});
 const cmdSearchInput = document.getElementById('command-search-input');
 if (cmdSearchInput) {
   cmdSearchInput.addEventListener('keydown', (e) => {
@@ -2032,6 +2338,8 @@ updateRunCountPill();
 updateCacheCountPill();
 updateMediaButtons();
 renderProfileSummary();
+renderAuthSessionState();
 resetTerminal();
 renderCards();
 updateConnectivityState();
+scheduleAuthSessionRefresh({ immediate: true });

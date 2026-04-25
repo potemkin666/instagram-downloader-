@@ -1296,12 +1296,43 @@
         <div class="stat-pill" id="api-health-pill"><span class="dot dot-yellow"></span>API status unknown</div>
         <div class="stat-pill" id="request-status-pill"><span class="dot dot-green"></span>Requests idle</div>
       </div>
+      <div class="profile-summary mt-16" aria-live="polite">
+        <div class="profile-summary-header">
+          <div class="profile-summary-title">BACKEND AUTH SESSION</div>
+          <div class="commands-toolbar">
+            <button class="btn-clear-mini" id="auth-refresh-btn" type="button">REFRESH</button>
+            <div class="stat-pill" id="auth-session-pill"><span class="dot dot-yellow"></span>Backend auth unavailable</div>
+          </div>
+        </div>
+        <div class="profile-summary-status" id="auth-session-status">Connect a backend URL to check authentication state.</div>
+        <div class="search-row mt-16">
+          <input id="auth-username-input" class="search-input" type="text"
+                 placeholder="Instagram username"
+                 autocomplete="username" spellcheck="false"
+                 aria-label="Instagram username for backend sign-in"/>
+          <input id="auth-password-input" class="search-input" type="password"
+                 placeholder="Password (optional if using cookies)"
+                 autocomplete="current-password"
+                 aria-label="Instagram password for backend sign-in"/>
+        </div>
+        <div class="mt-16">
+          <input id="auth-cookie-input" class="search-input" type="text"
+                 placeholder="Optional cookie header (for example: sessionid=...; csrftoken=...)"
+                 autocomplete="off" spellcheck="false"
+                 aria-label="Optional Instagram cookie header for backend sign-in"/>
+          <div class="field-note">Credentials and cookies are sent only to the configured backend. OceanGram does not store them in localStorage.</div>
+        </div>
+        <div class="commands-toolbar config-actions">
+          <button class="btn-clear-mini" id="auth-login-btn" type="button">SIGN IN</button>
+          <button class="btn-clear-mini" id="auth-logout-btn" type="button">SIGN OUT</button>
+        </div>
+      </div>
       <div class="stats-bar">
         <div class="stat-pill"><span class="dot dot-green"></span>20 commands available</div>
         <div class="stat-pill" id="live-mode-pill"><span class="dot dot-yellow"></span>Backend URL required</div>
         <div class="stat-pill" id="connectivity-pill"><span class="dot dot-green"></span>Online</div>
         <div class="stat-pill" id="run-count-pill"><span class="dot dot-green"></span>0 command runs</div>
-        <div class="stat-pill"><span class="dot dot-pink"></span>Public profiles only</div>
+        <div class="stat-pill"><span class="dot dot-pink"></span>Private access depends on backend auth</div>
       </div>
       <div class="recent-targets-wrap">
         <div class="recent-targets-title-row">

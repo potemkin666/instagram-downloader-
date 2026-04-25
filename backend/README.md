@@ -1,0 +1,38 @@
+# OceanGram Backend
+
+This package provides a small Flask-based bridge for OceanGram.
+
+## Features
+
+- `/api/health` backend readiness check
+- `/api/session`, `/api/login`, `/api/logout` authenticated backend session endpoints
+- `/api/command` command wrapping with HTTP-only session cookies
+- `/api/profile-summary`, `/api/profile`, and `/api/identity` profile summary endpoints
+- in-memory session storage and TTL-based response caching
+- configurable command templates so operators can point the service at Osintgram or a similar private-access tool
+
+## Environment variables
+
+- `OCEANGRAM_BACKEND_HOST` / `OCEANGRAM_BACKEND_PORT`
+- `OCEANGRAM_COMMAND_TEMPLATE` — required for `/api/command`
+- `OCEANGRAM_LOGIN_TEMPLATE` — optional login hook
+- `OCEANGRAM_LOGOUT_TEMPLATE` — optional logout hook
+- `OCEANGRAM_PROFILE_TEMPLATE` — optional dedicated profile summary hook
+- `OCEANGRAM_SESSION_TTL_SECONDS`
+- `OCEANGRAM_CACHE_TTL_SECONDS`
+- `OCEANGRAM_COMMAND_TIMEOUT_SECONDS`
+- `OCEANGRAM_COOKIE_SECURE`
+- `OCEANGRAM_COOKIE_SAMESITE`
+
+## Example
+
+```bash
+cd backend
+python -m venv .venv
+. .venv/bin/activate
+pip install -e .
+export OCEANGRAM_COMMAND_TEMPLATE='python3 /opt/osintgram/main.py {target} --command {command}'
+oceangram-backend
+```
+
+If your Osintgram wrapper needs an explicit login bootstrap step, set `OCEANGRAM_LOGIN_TEMPLATE` and read `OCEANGRAM_INSTAGRAM_USERNAME`, `OCEANGRAM_INSTAGRAM_PASSWORD`, and `OCEANGRAM_INSTAGRAM_COOKIES` from that command's environment.
