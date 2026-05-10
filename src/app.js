@@ -80,6 +80,7 @@ const STORAGE_KEYS = {
   liveCache: 'oceangramLiveOutputCache',
   functionalSettings: 'oceangramFunctionalSettings',
   lastMediaUrl: 'oceangramLastMediaUrl',
+  downloadRoot: 'oceangramDownloadRoot',
 };
 const LIVE_LINE_TYPES = new Set(['prompt', 'dim', 'label', 'info', 'result', 'warn', 'success', 'error', 'json', 'table']);
 // Keep a fallback path for older browsers that lack AbortController-based request cancellation.
@@ -1050,6 +1051,61 @@ function clearDefaultApiUrl() {
   persistAppConfig();
   renderDefaultApiConfig();
   showToast('Cleared saved default API URL.', { kind: 'success' });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DOWNLOAD ROOT CONFIGURATION
+═══════════════════════════════════════════════════════════ */
+function getDownloadRoot() {
+  return stateStore.getString(STORAGE_KEYS.downloadRoot, '');
+}
+
+function setDownloadRoot(value) {
+  const path = (value || '').trim();
+  stateStore.setString(STORAGE_KEYS.downloadRoot, path);
+  renderDownloadRootConfig();
+  return path;
+}
+
+function renderDownloadRootConfig() {
+  const input = document.getElementById('download-root-input');
+  const note = document.getElementById('download-root-note');
+  const savedPath = getDownloadRoot();
+  
+  if (input) {
+    input.value = savedPath;
+  }
+  
+  if (note) {
+    if (savedPath) {
+      note.innerHTML = `<strong>Preferred path:</strong> ${savedPath}<br><small>Set OCEANGRAM_DOWNLOAD_ROOT="${savedPath}" before starting the backend.</small>`;
+      note.classList.add('t-info');
+    } else {
+      note.innerHTML = 'Using backend default download location (./downloads).<br><small>Set a custom path above and restart backend with OCEANGRAM_DOWNLOAD_ROOT to change it.</small>';
+      note.classList.remove('t-info');
+    }
+  }
+}
+
+function saveDownloadRoot() {
+  const input = document.getElementById('download-root-input');
+  if (!input) return;
+  
+  const path = (input.value || '').trim();
+  setDownloadRoot(path);
+  
+  if (path) {
+    showToast(`Download path saved: ${path}. Restart backend with OCEANGRAM_DOWNLOAD_ROOT="${path}" to use it.`, { kind: 'success' });
+  } else {
+    showToast('Download path cleared. Backend will use default location.', { kind: 'success' });
+  }
+}
+
+function clearDownloadRoot() {
+  setDownloadRoot('');
+  const input = document.getElementById('download-root-input');
+  if (input) input.value = '';
+  showToast('Download path cleared. Backend will use default location.', { kind: 'success' });
 }
 
 function readAuthFormValues() {
@@ -2325,6 +2381,14 @@ const clearDefaultApiBtn = document.getElementById('clear-default-api-btn');
 if (clearDefaultApiBtn) {
   clearDefaultApiBtn.addEventListener('click', clearDefaultApiUrl);
 }
+const saveDownloadRootBtn = document.getElementById('save-download-root-btn');
+if (saveDownloadRootBtn) {
+  saveDownloadRootBtn.addEventListener('click', saveDownloadRoot);
+}
+const clearDownloadRootBtn = document.getElementById('clear-download-root-btn');
+if (clearDownloadRootBtn) {
+  clearDownloadRootBtn.addEventListener('click', clearDownloadRoot);
+}
 const authUsernameInput = document.getElementById('auth-username-input');
 const authPasswordInput = document.getElementById('auth-password-input');
 const authCookieInput = document.getElementById('auth-cookie-input');
@@ -2452,6 +2516,7 @@ if (allowContactToggle) allowContactToggle.checked = allowContactCommands;
 if (batchDelayInput) batchDelayInput.value = String(batchDelayMs);
 setLiveModePill();
 renderDefaultApiConfig();
+renderDownloadRootConfig();
 const initialApiErr = validateApiBaseUrl(getApiBaseUrl());
 setApiHealthPill('warn', initialApiErr || 'API status unknown');
 setRequestStatusPill('ok', 'Requests idle');

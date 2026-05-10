@@ -1307,6 +1307,19 @@
         <div class="stat-pill" id="api-health-pill"><span class="dot dot-yellow"></span>API status unknown</div>
         <div class="stat-pill" id="request-status-pill"><span class="dot dot-green"></span>Requests idle</div>
       </div>
+      <div class="mt-16">
+        <label class="field-label" for="download-root-input">DOWNLOAD DIRECTORY (OPTIONAL)</label>
+        <input id="download-root-input" class="search-input" type="text"
+               placeholder="./downloads (relative to repo) or /absolute/path/to/downloads"
+               autocomplete="off" spellcheck="false"
+               aria-label="Download directory path"/>
+        <div class="field-note">Configure where backend downloads should be saved. Use relative paths (e.g., ./downloads) or absolute paths. Leave empty to use backend default.</div>
+        <div class="commands-toolbar config-actions">
+          <button class="btn-clear-mini" id="save-download-root-btn" type="button">SAVE DOWNLOAD PATH</button>
+          <button class="btn-clear-mini" id="clear-download-root-btn" type="button">CLEAR</button>
+        </div>
+        <div class="field-note" id="download-root-note">Using backend default download location.</div>
+      </div>
       <div class="profile-summary mt-16" aria-live="polite">
         <div class="profile-summary-header">
           <div class="profile-summary-title">BACKEND AUTH SESSION</div>
